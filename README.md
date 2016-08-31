@@ -26,9 +26,8 @@ questions regarding the job behavior and, (c) ultimately optimize the job.
 
 Requirements
 ------------
-1. Starfish currently only supports Hadoop versions 0.20.2 and 0.20.203.0
-2. The MapReduce programs must be written using the new Hadoop API
-3. The Visualizer requires JavaFX version 1.2.1
+1. The MapReduce programs must be written using the new Hadoop API
+2. The Visualizer requires JavaFX version 1.2.1
 
 
 Usage:
