@@ -52,8 +52,8 @@ Development with Eclipse
    from existing source", select the "visualizer/" directory, and click "Next"
     (if using Eclipse 3.6 Helios, select "File > Import > Existing projects into workspace")
 4. Use the "Link additional source" option (or right click project name, select "Build Path -> Link Source...") to link the following directories:
-   - Starfish/starfish/src/profile
-   - Starfish/starfish/src/whatif
-   - Starfish/starfish/src/job_opt
+   - /src/profile
+   - /src/whatif
+   - /src/job_opt
 
 
