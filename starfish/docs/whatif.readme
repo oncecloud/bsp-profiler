@@ -1,0 +1,91 @@
+Project: What-if Analysis in Starfish
+Author: Herodotos Herodotou
+Date: July 29, 2011
+
+Requirements
+------------
+The Profiler has been used (see profile.readme) to generate the job profiles
+
+
+What-if Questions for MapReduce Programs on a Live Cluster
+----------------------------------------------------------
+Use the bin/whatif script to ask a what-if question:
+
+Usage:
+  ./bin/whatif question job_id hadoop jar jarFile [mainClass] [genericOptions] args...
+
+  question     = time|details|timeline|mappers|reducers|profile
+  job_id       = the job id of the profiled job
+
+  Descriptions of 'question':
+    time         Display the execution time of the predicted job
+    details      Display the statistics of the predicted job
+    profile      Display the predicted profile of the job
+    timeline     Display the timeline of the predicted job
+    mappers      Display the mappers of the predicted job
+    reducers     Display the reducers of the predicted job
+
+Example:
+  ./bin/whatif details job_201008240839_0000 hadoop jar hadoop-starfish-examples.jar wordcount -conf=myconf.xml input output
+
+Tip: You can get the job ids using './bin/analyze hadoop list_all'
+
+
+What-if Questions for MapReduce Programs on a Hypothetical Cluster
+------------------------------------------------------------------
+Use the bin/whatif script to ask a what-if question:
+
+Usage:
+  ./bin/whatif question profile_file input_file cluster_file [-c conf_file] [-o output_file]
+  
+  question     = time|details|timeline|mappers|reducers|profile
+  profile_file = the job profile file (XML file)
+  input_file   = the input specifications file (XML file)
+  cluster_file = the cluster specifications file (XML file)
+  conf_file    = optional job configuration file (XML file)
+  output_file  = optional file to write the output to
+
+Descriptions of 'question':
+  time      Display the execution time of the predicted job
+  details   Display the statistics of the predicted job
+  profile   Display the predicted profile of the job
+  timeline  Display the timeline of the predicted job
+  mappers   Display the mappers of the predicted job
+  reducers  Display the reducers of the predicted job
+
+Example:
+  ./bin/whatif details profile-wordcount.xml virtual-input.xml virtual-cluster.xml -c myconf.xml
+
+
+Notes
+-----
+1. The samples/whatif directory contains samples input.xml and cluster.xml files.
+
+2. You can use the starfish-whatif.jar to ask a what-if question on a live
+   Hadoop cluster and avoid using the flags -input and -cluster. In this case,
+   you must specify the job's input in the configuration file using the
+   'mapred.input.dir' property. You must also define the input format class,
+   if not using the TextInputFormat. Finally, if there is any dependency on 
+   external jars, they must be specified using the environmental 
+   variable 'HADOOP_CLASSPATH'.
+
+3. You can use the Starfish Visualizer to ask hypothetical questions regarding
+   the MapReduce job execution.
+
+
+Limitations
+-----------
+Currently, we do not profile compression! If you plan to use the job profile
+to ask what-if questions regarding compression or to use the Job Optimizer,
+then you must profile the same job twice: once with no compression and once
+with compression. Then use the 'adjust' mode in the starfish-*-profiler.jar
+to create the job profile.
+
+   Usage:
+      hadoop jar starfish-*-profiler.jar -mode adjust -results <results_dir> \
+         -job1 <job_id_1> -job2 <job_id_2>
+
+   <results_dir> is the output directory specified in PROFILER_OUTPUT_DIR
+   <job_id_1> is the job id of the job profiled without compression
+   <job_id_2> is the job id of the job profiled with compression
+

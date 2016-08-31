@@ -1,0 +1,90 @@
+Project: Dynamic Profiling in Starfish
+Author: Herodotos Herodotou
+Date: July 29, 2011
+
+Requirements
+------------
+1. Profiling will work only with Hadoop versions 0.20.2 and 0.20.203.0
+2. Profiling will work only with jobs implementing the new API
+
+
+BTrace Installation
+-------------------
+In order to profile the execution of a Map-Reduce job in a cluster 
+you must first install the BTrace jars and classes.
+
+1. Set the global profiling parameters in bin/config.sh
+   The required parameters are:
+   - SLAVES_BTRACE_DIR: The BTrace installation directory at the slave nodes
+   - CLUSTER_NAME: A descriptive name for the cluster
+   - PROFILER_OUTPUT_DIR: The local directory to place the output files
+   
+2. Install BTrace using the provided bin/install_btrace.sh.
+   
+   Usage:
+      ./bin/install_btrace.sh <slaves_file>
+   Example:
+      ./bin/install_btrace.sh /root/SLAVE_NAMES.txt
+
+
+Profile a MapReduce Job Execution
+---------------------------------
+There are two ways to profile the execution of a MapReduce job.
+
+Method A (Recommended): Using the bin/profile script
+1. Set the global profiling parameters in bin/config.sh
+
+2. Execute the bin/profile script
+
+   Usage:
+      ./bin/profile hadoop jar jarFile [mainClass] [genericOptions] args...
+   Example:
+      ./bin/profile hadoop jar hadoop-starfish-examples.jar wordcount input output
+
+
+Method B: Using a Hadoop configuration file 
+1. Modify the samples/profile/btrace-conf.xml to update the
+   "starfish.profiler.btrace.dir" property with the installation location.
+   
+   Note: You should not need to modify any other existing parameters from 
+   btrace-conf.xml, but if you want to use any other job-specific parameters,
+   you may add them in btrace-conf.xml.
+   
+2. Execute the job using the flag -conf=btrace-conf.xml
+
+   Example:
+      hadoop jar hadoop-starfish-examples.jar wordcount -conf=btrace-conf.xml input output
+
+3. Use the script gather_results.sh to gather the history and profile files
+   in one location. Optionally, you can gather the data transfers as well.
+   You must run this script from the same directory you run the
+   hadoop jar command.
+
+   Usage:
+      ./gather_results.sh <job_id>
+   Example:
+      ./gather_results.sh job_201001052153_0021
+
+
+Warning
+-------
+The job's driver class must implement the Tool interface for step 3
+to work correctly. If not, you must copy-paste the configurations
+from btrace-conf.xml into $HADOOP_HOME/conf/mapred-site.xml
+
+Limitation
+----------
+Currently, we do not profile compression! If you plan to use the job profile
+to ask what-if questions regarding compression or to use the Job Optimizer,
+then you must profile the same job twice: once with no compression and once
+with compression. Then use the 'adjust' mode in the starfish-*-profiler.jar
+to create the job profile.
+
+   Usage:
+      hadoop jar starfish-*-profiler.jar -mode adjust -results <results_dir> \
+         -job1 <job_id_1> -job2 <job_id_2>
+
+   <results_dir> is the output directory specified in PROFILER_OUTPUT_DIR
+   <job_id_1> is the job id of the job profiled without compression
+   <job_id_2> is the job id of the job profiled with compression
+
