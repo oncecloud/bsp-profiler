@@ -1,0 +1,24 @@
+#!/bin/bash
+# Copyright (2016, ) Institute of Software, Chinese Academy of Sciences
+# Author wuheng@otcaix.iscas.ac.cn
+# Date 2016/11/1
+# Version 2.0
+
+if [ $1 == "root" ]
+then
+    folder="/root/.ssh/";
+    filepath="/root/.ssh/id_rsa";
+else
+    folder="/home/"$1"/.ssh/";
+    filepath="/home/"$1"/.ssh/id_rsa";
+fi
+
+if [ -f $filepath ];
+then
+    echo "public key file is exist!"
+    echo "file path is : $filepath"
+else
+    echo "public key file inexistence!"
+    mkdir -p $folder;
+    ssh-keygen -t rsa -P '' -f $filepath;
+fi
