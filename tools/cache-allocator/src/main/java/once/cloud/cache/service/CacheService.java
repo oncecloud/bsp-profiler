@@ -41,8 +41,8 @@ public class CacheService {
 		return this.parseCacheStatus(cacheStatus);
 	}
 
-	// 0 8388608 cache 8 11/1028 512 789/1007 403 67 1100 0 0 0 0 1 writeback 2
-	// migration_threshold 2048 cleaner 0 rw -
+	// Example: 0 8388608 cache 8 11/1028 512 789/1007 403 67 1100 0 0 0 0 1
+	// writeback 2 migration_threshold 2048 cleaner 0 rw -
 	// <start> <end> <policy>
 	// <metadata block size> <#used metadata blocks>/<#total metadata blocks>
 	// <cache block size> <#used cache blocks>/<#total cache blocks>
@@ -67,6 +67,7 @@ public class CacheService {
 			status.setPolicy(policy);
 
 			long metadataBlockSize = scanner.nextLong();
+			status.setMetadataBlockSize(metadataBlockSize);
 
 			String next = scanner.next();
 
@@ -77,12 +78,15 @@ public class CacheService {
 			status.setTotalMetadataBlocks(totalMetadataBlocks);
 
 			long cacheBlockSize = scanner.nextLong();
+			status.setCacheBlockSize(cacheBlockSize);
 
 			next = scanner.next();
 
 			long usedCacheBlocks = Long.parseLong(next.substring(0, next.indexOf('/')));
+			status.setUsedCacheBlocks(usedCacheBlocks);
 
 			long totalCacheBlocks = Long.parseLong(next.substring(next.indexOf('/') + 1));
+			status.setTotalCacheBlocks(totalCacheBlocks);
 
 			long readHits = scanner.nextLong();
 			status.setReadHits(readHits);
@@ -102,19 +106,18 @@ public class CacheService {
 			long promotions = scanner.nextLong();
 			status.setPromotions(promotions);
 
-			// long blocksInCache = scanner.nextLong();
-			// status.setBlocksInCache(blocksInCache);
-
 			long dirty = scanner.nextLong();
 			status.setDirty(dirty);
 
 			LOGGER.trace(
-					"parseCacheStatus(): " + "start={}, " + "end={}, " + "policy={}, " + "used metadata blocks={}, "
-							+ "total metadata blocks={}, " + "read hits={}, " + "read misses={}, " + "write hits={}, "
-							+ "write misses={}, " + "demotions={}, " + "promotions={}, " + "blocks in cache={}, "
-							+ "dirty={}",
-					start, end, policy, usedMetadataBlocks, totalMetadataBlocks, readHits, readMisses, writeHits,
-					writeMisses, demotions, promotions, usedCacheBlocks, dirty);
+					"parseCacheStatus(): " + "start={}, " + "end={}, " + "policy={}, metadata block size={}, "
+							+ "used metadata blocks={}, "
+							+ "total metadata blocks={}, cache block size={}, used cache blocks={}, total cache blocks={}, "
+							+ "read hits={}, " + "read misses={}, " + "write hits={}, " + "write misses={}, "
+							+ "demotions={}, " + "promotions={}, " + "dirty={}",
+					start, end, policy, metadataBlockSize, usedMetadataBlocks, totalMetadataBlocks, cacheBlockSize,
+					usedCacheBlocks, totalCacheBlocks, readHits, readMisses, writeHits, writeMisses, demotions,
+					promotions, dirty);
 
 			int features = scanner.nextInt();
 			LOGGER.trace("parseCacheStatus(): features count: {}", features);
@@ -134,6 +137,8 @@ public class CacheService {
 			}
 
 			String policyName = scanner.next();
+			LOGGER.trace("parseCacheStatus(): policy name: {}", policyName);
+			status.setPolicyName(policyName);
 
 			int policyArguments = scanner.nextInt();
 			LOGGER.trace("parseCacheStatus(): policy arguments: {}", policyArguments);
@@ -143,6 +148,10 @@ public class CacheService {
 				LOGGER.trace("parseCacheStatus(): policy argument: key={}, value={}", key, value);
 				status.getPolicyArgumentList().put(key, value);
 			}
+
+			String cacheMetadataMode = scanner.next();
+			LOGGER.trace("parseCacheStatus(): cache metadata mode: {}", cacheMetadataMode);
+			status.setCacheMetadataMode(cacheMetadataMode);
 
 			return status;
 		} finally {
