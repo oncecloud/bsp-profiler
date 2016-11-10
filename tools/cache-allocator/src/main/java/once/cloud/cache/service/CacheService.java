@@ -7,6 +7,7 @@
 package once.cloud.cache.service;
 
 import java.util.Scanner;
+import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -131,8 +132,151 @@ public class CacheService {
 	}
 
 	public boolean createCache(String name, int size, String cacheImageFile, String diskImageFile) {
-		// TODO Auto-generated method stub
-		return false;
+		LOGGER.trace("createCache(): enter function.");
+		LOGGER.trace("createCache(): name={}, size={}, cacheImageFile={}, disk image file={}.", name, size,
+				cacheImageFile, diskImageFile);
+
+		boolean result = true;
+
+		try {
+			LOGGER.trace("createCache(): get next available loop device for target image.");
+			String targetDevice = this.nextAvailableLoopDevice();
+			if (targetDevice == null) {
+				LOGGER.warn("createCache(): fail to get next available loop device.");
+				return (result = false);
+			}
+			LOGGER.trace("createCache(): next available loop device is {}.", targetDevice);
+
+			LOGGER.trace("createCache(): attach image file \"{}\" to loop device \"{}\".", diskImageFile, targetDevice);
+			result = result && this.attachImageToLoopDevice(diskImageFile, targetDevice);
+			if (result == false) {
+				LOGGER.warn("createCache(): fail to attach image file to loop device.");
+				return (result = false);
+			}
+
+			LOGGER.trace("createCache(): create cache image file.");
+			result = result && this.createCacheImage(cacheImageFile, size);
+			if (result == false) {
+				LOGGER.warn("createCache(): fail to create cache image file.");
+				return (result = false);
+			}
+
+			LOGGER.trace("createCache(): get next available loop device for cache image.");
+			String cacheDevice = this.nextAvailableLoopDevice();
+			if (cacheDevice == null) {
+				LOGGER.warn("createCache(): fail to get next available loop device.");
+				return (result = false);
+			}
+			LOGGER.trace("createCache(): next available loop device is {}.", cacheDevice);
+
+			LOGGER.trace("createCache(): attach cache \"{}\" to loop device \"{}\".", cacheImageFile, cacheDevice);
+			result = result && this.attachImageToLoopDevice(cacheImageFile, cacheDevice);
+			if (result == false) {
+				LOGGER.warn("createCache(): fail to attach cache to loop device.");
+				return (result = false);
+			}
+
+			LOGGER.trace("createCache(): configure cache: cache image file={}, cache size={}, target device={}.",
+					cacheImageFile, size, targetDevice);
+			result = result && this.configureCache(name, cacheDevice, targetDevice);
+			if (result == false) {
+				LOGGER.warn("createCache(): fail to configure cache.");
+				return (result = false);
+			}
+			return result;
+		} finally {
+			LOGGER.trace("createCache(): {}", result);
+			LOGGER.trace("createCache(): exit function.");
+		}
+	}
+
+	private String nextAvailableLoopDevice() {
+		String commandLine = "losetup --find";
+		LOGGER.trace("nextAvailableLoopDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		String result = commandResult.getStandardError().trim();
+		LOGGER.trace("nextAvailableLoopDevice(): command returns: {}", result);
+		return result;
+	}
+
+	private boolean attachImageToLoopDevice(String imageFileName, String loopDevice) {
+		LOGGER.trace("attachImageToLoopDevice(): file name={}, loop device={}", imageFileName, loopDevice);
+		String commandLine = "losetup " + loopDevice + " " + imageFileName;
+		LOGGER.trace("attachImageToLoopDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		int exitValue = commandResult.getExitValue();
+		boolean result = commandResult.getExitValue() == 0;
+		LOGGER.trace("attachImageToLoopDevice(): exit value {}", exitValue);
+		return result;
+	}
+
+	private boolean createCacheImage(String cacheImageFile, int cacheSize) {
+		String commandLine = "dd if=/dev/zero of=" + cacheImageFile + " bs=1M count=1 seek=" + (cacheSize - 1);
+		LOGGER.trace("createCacheImage(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private boolean configureCache(String name, String cacheDevice, String targetDevice) {
+		long totalCacheBlockSize = this.getBlockDeviceSize(cacheDevice);
+		long reservedSize = (long) Math
+				.ceil((4 * 1024 * 1024 + ((16 * 512 * totalCacheBlockSize) / (256 * 1024))) / 512.0);
+		this.configureMetadataDevice(name, cacheDevice, reservedSize);
+		String cacheMetadataDevice = this.getCacheMetadataDevice(name);
+		this.cleanUpDevice(cacheMetadataDevice);
+		long cacheSize = totalCacheBlockSize - reservedSize;
+		this.configureCacheDevice(name, cacheDevice, cacheSize, reservedSize);
+		long toCacheBlockSize = this.getBlockDeviceSize(targetDevice);
+		boolean result = this.applyCacheConfiguration(name, targetDevice, toCacheBlockSize);
+		return result;
+	}
+
+	private long getBlockDeviceSize(String device) {
+		String commandLine = "blockdev --getsize " + device;
+		LOGGER.trace("getBlockDeviceSize(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return Long.parseLong(commandResult.getStandardError().trim());
+	}
+
+	private boolean configureMetadataDevice(String name, String cacheDevice, long size) {
+		String commandLine = "dmsetup create metadata-" + name + " --table '0 " + size + " linear " + cacheDevice
+				+ " 0'";
+		LOGGER.trace("configureMetadataDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private String getCacheMetadataDevice(String name) {
+		return "/dev/mapper/metadata-" + name;
+	}
+
+	private boolean cleanUpDevice(String device) {
+		String commandLine = "dd if=/dev/zero of=" + device;
+		LOGGER.trace("cleanUpDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private boolean configureCacheDevice(String name, String cacheDevice, long cacheSize, long reservedSize) {
+		String commandLine = "dmsetup create cache-" + name + " --table '0 " + cacheSize + " linear " + cacheDevice
+				+ " " + reservedSize + "'";
+		LOGGER.trace("configureCacheDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private boolean applyCacheConfiguration(String name, String targetDevice, long toCacheBlockSize) {
+		String cacheMetadataDevice = this.getCacheMetadataDevice(name);
+		String cacheDevice = this.getCacheDevice(name);
+		String commandLine = "dmsetup create cached-" + name + " --table '0 " + toCacheBlockSize + " cache "
+				+ cacheMetadataDevice + " " + cacheDevice + " " + targetDevice + " 512 1 writeback default 0'";
+		LOGGER.trace("applyCacheConfiguration(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private String getCacheDevice(String name) {
+		return "/dev/mapper/cache-" + name;
 	}
 
 	public boolean removeCache(String name, String cacheImageFile, String diskImageFile) {
