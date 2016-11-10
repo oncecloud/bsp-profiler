@@ -15,19 +15,24 @@ public class CacheStatusModel {
 	private long start;
 	private long end;
 	private String policy;
+	private long metadataBlockSize;
 	private long usedMetadataBlocks;
 	private long totalMetadataBlocks;
+	private long cacheBlockSize;
+	private long usedCacheBlocks;
+	private long totalCacheBlocks;
 	private long readHits;
 	private long readMisses;
 	private long writeHits;
 	private long writeMisses;
 	private long demotions;
 	private long promotions;
-	private long blocksInCache;
 	private long dirty;
 	private List<String> featureList;
 	private Map<String, String> coreArgumentList;
+	private String policyName;
 	private Map<String, String> policyArgumentList;
+	private String cacheMetadataMode;
 
 	public long getStart() {
 		return start;
@@ -53,6 +58,14 @@ public class CacheStatusModel {
 		this.policy = policy;
 	}
 
+	public long getMetadataBlockSize() {
+		return metadataBlockSize;
+	}
+
+	public void setMetadataBlockSize(long metadataBlockSize) {
+		this.metadataBlockSize = metadataBlockSize;
+	}
+
 	public long getUsedMetadataBlocks() {
 		return usedMetadataBlocks;
 	}
@@ -67,6 +80,30 @@ public class CacheStatusModel {
 
 	public void setTotalMetadataBlocks(long totalMetadataBlocks) {
 		this.totalMetadataBlocks = totalMetadataBlocks;
+	}
+
+	public long getCacheBlockSize() {
+		return cacheBlockSize;
+	}
+
+	public void setCacheBlockSize(long cacheBlockSize) {
+		this.cacheBlockSize = cacheBlockSize;
+	}
+
+	public long getUsedCacheBlocks() {
+		return usedCacheBlocks;
+	}
+
+	public void setUsedCacheBlocks(long usedCacheBlocks) {
+		this.usedCacheBlocks = usedCacheBlocks;
+	}
+
+	public long getTotalCacheBlocks() {
+		return totalCacheBlocks;
+	}
+
+	public void setTotalCacheBlocks(long totalCacheBlocks) {
+		this.totalCacheBlocks = totalCacheBlocks;
 	}
 
 	public long getReadHits() {
@@ -117,14 +154,6 @@ public class CacheStatusModel {
 		this.promotions = promotions;
 	}
 
-	public long getBlocksInCache() {
-		return blocksInCache;
-	}
-
-	public void setBlocksInCache(long blocksInCache) {
-		this.blocksInCache = blocksInCache;
-	}
-
 	public long getDirty() {
 		return dirty;
 	}
@@ -149,12 +178,28 @@ public class CacheStatusModel {
 		this.coreArgumentList = coreArgumentList;
 	}
 
+	public String getPolicyName() {
+		return policyName;
+	}
+
+	public void setPolicyName(String policyName) {
+		this.policyName = policyName;
+	}
+
 	public Map<String, String> getPolicyArgumentList() {
 		return policyArgumentList;
 	}
 
 	public void setPolicyArgumentList(Map<String, String> policyArgumentList) {
 		this.policyArgumentList = policyArgumentList;
+	}
+
+	public String getCacheMetadataMode() {
+		return cacheMetadataMode;
+	}
+
+	public void setCacheMetadataMode(String cacheMetadataMode) {
+		this.cacheMetadataMode = cacheMetadataMode;
 	}
 
 	public CacheStatusModel() {

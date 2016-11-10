@@ -33,7 +33,7 @@ public class CacheService {
 	}
 
 	public CacheStatus getCacheStatus(String name) {
-		String commandLine = "dmsetup status " + name;
+		String commandLine = "dmsetup status cached-" + name;
 		LOGGER.trace("getCacheStatus(): command line: {}", commandLine);
 		CommandResult commandResult = this.getProcessHelper().run(commandLine);
 		String cacheStatus = commandResult.getStandardError().trim();

@@ -51,19 +51,24 @@ public class CacheController {
 			result.setStart(status.getStart());
 			result.setEnd(status.getEnd());
 			result.setPolicy(status.getPolicy());
+			result.setMetadataBlockSize(status.getMetadataBlockSize());
 			result.setUsedMetadataBlocks(status.getUsedMetadataBlocks());
 			result.setTotalMetadataBlocks(status.getTotalMetadataBlocks());
+			result.setCacheBlockSize(status.getCacheBlockSize());
+			result.setUsedCacheBlocks(status.getUsedCacheBlocks());
+			result.setTotalCacheBlocks(status.getTotalCacheBlocks());
 			result.setReadHits(status.getReadHits());
 			result.setReadMisses(status.getReadMisses());
 			result.setWriteHits(status.getWriteHits());
 			result.setWriteMisses(status.getWriteMisses());
 			result.setDemotions(status.getDemotions());
 			result.setPromotions(status.getPromotions());
-			result.setBlocksInCache(status.getBlocksInCache());
 			result.setDirty(status.getDirty());
 			result.getFeatureList().addAll(status.getFeatureList());
 			result.getCoreArgumentList().putAll(status.getCoreArgumentList());
+			result.setPolicyName(status.getPolicyName());
 			result.getPolicyArgumentList().putAll(status.getPolicyArgumentList());
+			result.setCacheMetadataMode(status.getCacheMetadataMode());
 			return result;
 		} catch (Exception exception) {
 			exception.printStackTrace();
