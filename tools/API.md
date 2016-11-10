@@ -64,3 +64,7 @@ GET /Api/Cache/\{name\}
     * policyName
     * policyArgumentList
     * cacheMetadataMode
+
+### 说明
+* 如果需要创建内存缓存，请将cache-image-file指定为/dev/shm/目录下的文件。类似地，将cache-image-file指定为SSD上的文件即可创建SSD缓存。
+* 在删除缓存前需要确保块设备（/dev/mapper/cached-\{name\}）可以被正确umount。
