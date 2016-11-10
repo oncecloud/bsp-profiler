@@ -6,8 +6,8 @@
 
 package once.cloud.cache.service;
 
+import java.io.File;
 import java.util.Scanner;
-import java.util.UUID;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +41,15 @@ public class CacheService {
 		return this.parseCacheStatus(cacheStatus);
 	}
 
+	// 0 8388608 cache 8 11/1028 512 789/1007 403 67 1100 0 0 0 0 1 writeback 2
+	// migration_threshold 2048 cleaner 0 rw -
+	// <start> <end> <policy>
+	// <metadata block size> <#used metadata blocks>/<#total metadata blocks>
+	// <cache block size> <#used cache blocks>/<#total cache blocks>
+	// <#read hits> <#read misses> <#write hits> <#write misses>
+	// <#demotions> <#promotions> <#dirty> <#features> <features>*
+	// <#core args> <core args>* <policy name> <#policy args> <policy args>*
+	// <cache metadata mode>
 	private CacheStatus parseCacheStatus(String cacheStatus) {
 		int i;
 		Scanner scanner = null;
@@ -57,6 +66,8 @@ public class CacheService {
 			String policy = scanner.next();
 			status.setPolicy(policy);
 
+			long metadataBlockSize = scanner.nextLong();
+
 			String next = scanner.next();
 
 			long usedMetadataBlocks = Long.parseLong(next.substring(0, next.indexOf('/')));
@@ -64,6 +75,14 @@ public class CacheService {
 
 			long totalMetadataBlocks = Long.parseLong(next.substring(next.indexOf('/') + 1));
 			status.setTotalMetadataBlocks(totalMetadataBlocks);
+
+			long cacheBlockSize = scanner.nextLong();
+
+			next = scanner.next();
+
+			long usedCacheBlocks = Long.parseLong(next.substring(0, next.indexOf('/')));
+
+			long totalCacheBlocks = Long.parseLong(next.substring(next.indexOf('/') + 1));
 
 			long readHits = scanner.nextLong();
 			status.setReadHits(readHits);
@@ -83,8 +102,8 @@ public class CacheService {
 			long promotions = scanner.nextLong();
 			status.setPromotions(promotions);
 
-			long blocksInCache = scanner.nextLong();
-			status.setBlocksInCache(blocksInCache);
+			// long blocksInCache = scanner.nextLong();
+			// status.setBlocksInCache(blocksInCache);
 
 			long dirty = scanner.nextLong();
 			status.setDirty(dirty);
@@ -95,7 +114,7 @@ public class CacheService {
 							+ "write misses={}, " + "demotions={}, " + "promotions={}, " + "blocks in cache={}, "
 							+ "dirty={}",
 					start, end, policy, usedMetadataBlocks, totalMetadataBlocks, readHits, readMisses, writeHits,
-					writeMisses, demotions, promotions, blocksInCache, dirty);
+					writeMisses, demotions, promotions, usedCacheBlocks, dirty);
 
 			int features = scanner.nextInt();
 			LOGGER.trace("parseCacheStatus(): features count: {}", features);
@@ -113,6 +132,8 @@ public class CacheService {
 				LOGGER.trace("parseCacheStatus(): core argument: key={}, value={}", key, value);
 				status.getCoreArgumentList().put(key, value);
 			}
+
+			String policyName = scanner.next();
 
 			int policyArguments = scanner.nextInt();
 			LOGGER.trace("parseCacheStatus(): policy arguments: {}", policyArguments);
@@ -280,7 +301,135 @@ public class CacheService {
 	}
 
 	public boolean removeCache(String name, String cacheImageFile, String diskImageFile) {
-		// TODO Auto-generated method stub
-		return false;
+		if (!this.checkExistance(name)) {
+			return true;
+		}
+		if (this.isMounted(name)) {
+			this.umountCachedDevice(name);
+		}
+		boolean result = true;
+		result = result && this.cleanUpCache(name);
+		result = result && this.disconnectCache(name);
+		result = result && this.detachLoopDevice(cacheImageFile);
+		result = result && this.removeFile(cacheImageFile);
+		result = result && this.detachLoopDevice(diskImageFile);
+		return result;
 	}
+
+	private boolean checkExistance(String name) {
+		File cached = new File("/dev/mapper/cached-" + name);
+		File cache = new File("/dev/mapper/cache-" + name);
+		File metadata = new File("/dev/mapper/metadata-" + name);
+		return cached.exists() && cache.exists() && metadata.exists();
+	}
+
+	private boolean isMounted(String name) {
+		String commandLine = "mount";
+		LOGGER.trace("isMounted(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getStandardError().contains("/dev/mapper/cached-" + name);
+	}
+
+	private boolean umountCachedDevice(String name) {
+		String commandLine = "umount /dev/mapper/cached-" + name;
+		LOGGER.trace("umountCachedDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private boolean cleanUpCache(String name) {
+		boolean result = true;
+		String commandLine;
+		CommandResult commandResult;
+
+		commandLine = "dmsetup table cached-" + name;
+		LOGGER.trace("cleanUpCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		String cleanerTable = commandResult.getStandardError().trim().replace("1 writeback default 0", "0 cleaner 0");
+
+		commandLine = "dmsetup suspend cached-" + name;
+		LOGGER.trace("cleanUpCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		result = result && commandResult.getExitValue() == 0;
+
+		commandLine = "dmsetup reload cached-" + name + " --table '" + cleanerTable + "'";
+		LOGGER.trace("cleanUpCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		result = result && commandResult.getExitValue() == 0;
+
+		commandLine = "dmsetup resume cached-" + name;
+		LOGGER.trace("cleanUpCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		result = result && commandResult.getExitValue() == 0;
+
+		commandLine = "dmsetup status cached-" + name;
+		LOGGER.trace("cleanUpCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		String cacheStatus = commandResult.getStandardError().trim();
+		LOGGER.trace("cleanUpCache(): cache status: {}", cacheStatus);
+		CacheStatus status = this.parseCacheStatus(cacheStatus);
+
+		while (status.getDirty() > 0) {
+			int waitTime = (int) (status.getDirty() * 2);
+			LOGGER.trace("cleanUpCache(): wait for {} dirty blocks to flush", status.getDirty());
+			LOGGER.trace("cleanUpCache(): wait for {} ms", waitTime);
+			try {
+				Thread.sleep(waitTime);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+			commandLine = "dmsetup status cached-" + name;
+			LOGGER.trace("cleanUpCache(): command line: {}", commandLine);
+			commandResult = this.getProcessHelper().run(commandLine);
+			cacheStatus = commandResult.getStandardError().trim();
+			LOGGER.trace("cleanUpCache(): cache status: {}", cacheStatus);
+			status = this.parseCacheStatus(cacheStatus);
+		}
+
+		return result;
+	}
+
+	private boolean disconnectCache(String name) {
+		boolean result = true;
+		String commandLine;
+		CommandResult commandResult;
+
+		commandLine = "dmsetup remove cached-" + name;
+		LOGGER.trace("disconnectCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		result = result && commandResult.getExitValue() == 0;
+
+		commandLine = "dmsetup remove metadata-" + name;
+		LOGGER.trace("disconnectCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		result = result && commandResult.getExitValue() == 0;
+
+		commandLine = "dmsetup remove cache-" + name;
+		LOGGER.trace("disconnectCache(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		result = result && commandResult.getExitValue() == 0;
+
+		return result;
+	}
+
+	private boolean detachLoopDevice(String imageFileName) {
+		String commandLine = "losetup --all | grep \"" + imageFileName + "\"";
+		LOGGER.trace("detachLoopDevice(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		String ret = commandResult.getStandardError().trim();
+
+		String loopDevice = ret.substring(0, ret.indexOf(':'));
+		commandLine = "losetup --detach " + loopDevice;
+		LOGGER.trace("detachLoopDevice(): command line: {}", commandLine);
+		commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
+	private boolean removeFile(String fileName) {
+		String commandLine = "rm --force " + fileName;
+		LOGGER.trace("removeFile(): command line: {}", commandLine);
+		CommandResult commandResult = this.getProcessHelper().run(commandLine);
+		return commandResult.getExitValue() == 0;
+	}
+
 }
