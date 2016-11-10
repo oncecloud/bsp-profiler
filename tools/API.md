@@ -15,5 +15,52 @@
 ### 创建缓存
 * URL  
 POST /Api/Cache/\{name\}  
-* HTTP头  
-x-  
+创建名为name的缓存设备。
+* HTTP头中传入参数  
+x-ocme-cache-size：缓存大小，以MB为单位  
+x-ocme-cache-cache-image-file：缓存镜像文件位置  
+x-ocme-cache-disk-image-file：磁盘镜像文件位置
+* 返回值  
+一个Boolean值，指示操作成功与否。  
+* 说明  
+这一API执行后会在/dev/mapper目录下生成cached-\{name\}的块设备，可以直接挂载使用或作为虚拟机的磁盘使用。  
+
+### 删除缓存
+* URL
+DELETE /Api/Cache/\{name\}  
+删除名为name的缓存设备。  
+* HTTP头中传入参数  
+x-ocme-cache-cache-image-file：缓存镜像文件位置  
+x-ocme-cache-disk-image-file：磁盘镜像文件位置
+* 返回值  
+一个Boolean值，指示操作成功与否。  
+* 说明  
+这一API执行后会将缓存中的数据写回磁盘镜像并安全删除缓存。
+
+### 获取缓存状态
+* URL
+GET /Api/Cache/\{name\}  
+获取名为name的缓存的详细状态。
+* 返回值  
+一个JSON对象。
+    * start
+    * end
+    * policy
+    * metadataBlockSize
+    * usedMetadataBlocks
+    * totalMetadataBlocks
+    * cacheBlockSize
+    * usedCacheBlocks
+    * totalCacheBlocks
+    * readHits
+    * readMisses
+    * writeHits
+    * writeMisses
+    * demotions
+    * promotions
+    * dirty
+    * featureList
+    * coreArgumentList
+    * policyName
+    * policyArgumentList
+    * cacheMetadataMode
