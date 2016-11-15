@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 
+ ===============================================================
+ Copyright(c) Institute of Software, Chinese Academy of Sciences
+ ===============================================================
+ Author : Zhen Tang <tangzhen12@otcaix.iscas.ac.cn>
+ Date   : 2016/11/11
+ -->
+ 
+<assembly
+	xmlns="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/plugins/maven-assembly-plugin/assembly/1.1.0 http://maven.apache.org/xsd/assembly-1.1.0.xsd">
+	<id>publish</id>
+	<formats>
+		<format>tar.gz</format>
+	</formats>
+	<includeBaseDirectory>false</includeBaseDirectory>
+	<dependencySets>
+		<dependencySet>
+			<outputDirectory>lib</outputDirectory>
+			<useProjectArtifact>false</useProjectArtifact>
+			<unpack>false</unpack>
+			<scope>runtime</scope>
+		</dependencySet>
+	</dependencySets>
+	<files>
+		<file>
+			<source>target/deploy-agent.jar</source>
+			<outputDirectory>/</outputDirectory>
+		</file>
+	</files>
+</assembly>
