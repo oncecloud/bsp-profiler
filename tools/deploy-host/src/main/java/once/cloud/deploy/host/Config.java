@@ -2,7 +2,7 @@
 // Copyright(c) Institute of Software, Chinese Academy of Sciences
 // ===============================================================
 // Author : Zhen Tang <tangzhen12@otcaix.iscas.ac.cn>
-// Date   : 2016/11/11
+// Date   : 2016/11/21
 
 package once.cloud.deploy.host;
 
@@ -21,12 +21,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 @PropertySource("classpath:address.properties")
 public class Config {
 	@Bean(name = { "placeHolder" })
-	public PropertySourcesPlaceholderConfigurer placeHolder() {
+	public static PropertySourcesPlaceholderConfigurer placeHolder() {
 		return new PropertySourcesPlaceholderConfigurer();
 	}
 
 	@Bean(name = { "objectMapper" })
-	public ObjectMapper objectMapper() {
+	public static ObjectMapper objectMapper() {
 		return new ObjectMapper();
 	}
 

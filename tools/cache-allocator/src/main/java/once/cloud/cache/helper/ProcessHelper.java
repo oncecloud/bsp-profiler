@@ -24,7 +24,7 @@ public class ProcessHelper {
 						int c = -1;
 						try {
 							while ((c = reader.read()) != -1) {
-								standardError.append((char) c);
+								standardOutput.append((char) c);
 							}
 						} finally {
 							reader.close();
