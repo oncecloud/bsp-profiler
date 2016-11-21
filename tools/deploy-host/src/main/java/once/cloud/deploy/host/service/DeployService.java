@@ -65,6 +65,24 @@ public class DeployService {
 			+ "    </property>\n" + "    <property>\n" + "        <name>dfs.webhdfs.enabled</name>\n"
 			+ "        <value>true</value>\n" + "    </property>\n" + "</configuration>\n";
 
+	private String mapredSiteFileLocationTemplate = "{location}/etc/hadoop/mapred-site.xml";
+	private String mapredSiteFileContentTemplate = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+			+ "<?xml-stylesheet type=\"text/xsl\" href=\"configuration.xsl\"?>\n" + "<!--\n"
+			+ "  Licensed under the Apache License, Version 2.0 (the \"License\");\n"
+			+ "  you may not use this file except in compliance with the License.\n"
+			+ "  You may obtain a copy of the License at\n" + "\n" + "    http://www.apache.org/licenses/LICENSE-2.0\n"
+			+ "\n" + "  Unless required by applicable law or agreed to in writing, software\n"
+			+ "  distributed under the License is distributed on an \"AS IS\" BASIS,\n"
+			+ "  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
+			+ "  See the License for the specific language governing permissions and\n"
+			+ "  limitations under the License. See accompanying LICENSE file.\n" + "-->\n" + "\n"
+			+ "<!-- Put site-specific property overrides in this file. -->\n" + "\n" + "<configuration>\n"
+			+ "    <property>\n" + "        <name>mapreduce.framework.name</name>\n" + "        <value>yarn</value>\n"
+			+ "    </property>\n" + "    <property>\n" + "        <name>mapreduce.jobhistory.address</name>\n"
+			+ "        <value>{master}:10020</value>\n" + "    </property>\n" + "    <property>\n"
+			+ "        <name>mapreduce.jobhistory.webapp.address</name>\n" + "        <value>{master}:19888</value>\n"
+			+ "    </property>\n" + "</configuration>\n";
+
 	public boolean deployHadoopCluster(String location, String masterIp, List<String> slaveIpList) {
 		String coreSiteFileLocation = this.coreSiteFileLocationTemplate.replace("{master}", masterIp)
 				.replace("{location}", location);
@@ -82,6 +100,15 @@ public class DeployService {
 		this.getAgentHelper().upload(masterIp, hdfsSiteFileLocation, hdfsSiteFileContent);
 		for (String slaveIp : slaveIpList) {
 			this.getAgentHelper().upload(slaveIp, hdfsSiteFileLocation, hdfsSiteFileContent);
+		}
+
+		String mapredSiteFileLocation = this.mapredSiteFileLocationTemplate.replace("{master}", masterIp)
+				.replace("{location}", location);
+		String mapredSiteFileContent = this.mapredSiteFileContentTemplate.replace("{master}", masterIp)
+				.replace("{location}", location);
+		this.getAgentHelper().upload(masterIp, mapredSiteFileLocation, mapredSiteFileContent);
+		for (String slaveIp : slaveIpList) {
+			this.getAgentHelper().upload(slaveIp, mapredSiteFileLocation, mapredSiteFileContent);
 		}
 		return true;
 	}
