@@ -108,9 +108,7 @@ public class DeployService {
 			+ "        <value>{master}:8031</value>\n" + "    </property>\n" + "    <property>\n"
 			+ "        <name>yarn.resourcemanager.admin.address</name>\n" + "        <value>{master}:8033</value>\n"
 			+ "    </property>\n" + "    <property>\n" + "        <name>yarn.resourcemanager.webapp.address</name>\n"
-			+ "        <value>{master}:8088</value>\n" + "    </property>\n" + "    <property>\n"
-			+ "        <name>yarn.nodemanager.resource.memory-mb</name>\n" + "        <value>768</value>\n"
-			+ "    </property>\n" + "</configuration>\n";
+			+ "        <value>{master}:8088</value>\n" + "    </property>\n" + "</configuration>\n";
 
 	private String slavesFileLocationTemplate = "{location}/etc/hadoop/slaves";
 
