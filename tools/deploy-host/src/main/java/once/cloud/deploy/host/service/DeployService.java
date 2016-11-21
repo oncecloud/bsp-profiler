@@ -58,6 +58,8 @@ public class DeployService {
 			+ "<!-- Put site-specific property overrides in this file. -->\n" + "\n" + "<configuration>\n"
 			+ "    <property>\n" + "        <name>dfs.namenode.name.dir</name>\n"
 			+ "        <value>file:{location}/hdfs/name</value>\n" + "    </property>\n" + "    <property>\n"
+			+ "        <name>dfs.namenode.datanode.registration.ip-hostname-check</name>\n"
+			+ "        <value>false</value>\n" + "    </property>\n" + "    <property>\n"
 			+ "        <name>dfs.datanode.data.dir</name>\n" + "        <value>file:{location}/hdfs/data</value>\n"
 			+ "    </property>\n" + "    <property>\n" + "        <name>dfs.replication</name>\n"
 			+ "        <value>2</value>\n" + "    </property>\n" + "    <property>\n"
