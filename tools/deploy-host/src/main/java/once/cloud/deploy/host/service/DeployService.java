@@ -83,6 +83,35 @@ public class DeployService {
 			+ "        <name>mapreduce.jobhistory.webapp.address</name>\n" + "        <value>{master}:19888</value>\n"
 			+ "    </property>\n" + "</configuration>\n";
 
+	private String yarnSiteFileLocationTemplate = "{location}/etc/hadoop/yarn-site.xml";
+	private String yarnSiteFileContentTemplate = "<?xml version=\"1.0\"?>\n" + "<!--\n"
+			+ "  Licensed under the Apache License, Version 2.0 (the \"License\");\n"
+			+ "  you may not use this file except in compliance with the License.\n"
+			+ "  You may obtain a copy of the License at\n" + "\n" + "    http://www.apache.org/licenses/LICENSE-2.0\n"
+			+ "\n" + "  Unless required by applicable law or agreed to in writing, software\n"
+			+ "  distributed under the License is distributed on an \"AS IS\" BASIS,\n"
+			+ "  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
+			+ "  See the License for the specific language governing permissions and\n"
+			+ "  limitations under the License. See accompanying LICENSE file.\n" + "-->\n" + "<configuration>\n" + "\n"
+			+ "<!-- Site specific YARN configuration properties -->\n" + "\n" + "    <property>\n"
+			+ "        <name>yarn.nodemanager.aux-services</name>\n" + "        <value>mapreduce_shuffle</value>\n"
+			+ "    </property>\n" + "    <property>\n"
+			+ "        <name>yarn.nodemanager.auxservices.mapreduce.shuffle.class</name>\n"
+			+ "        <value>org.apache.hadoop.mapred.ShuffleHandler</value>\n" + "    </property>\n"
+			+ "    <property>\n" + "        <name>yarn.resourcemanager.address</name>\n"
+			+ "        <value>{master}:8032</value>\n" + "    </property>\n" + "    <property>\n"
+			+ "        <name>yarn.resourcemanager.scheduler.address</name>\n" + "        <value>{master}:8030</value>\n"
+			+ "    </property>\n" + "    <property>\n"
+			+ "        <name>yarn.resourcemanager.resource-tracker.address</name>\n"
+			+ "        <value>{master}:8031</value>\n" + "    </property>\n" + "    <property>\n"
+			+ "        <name>yarn.resourcemanager.admin.address</name>\n" + "        <value>{master}:8033</value>\n"
+			+ "    </property>\n" + "    <property>\n" + "        <name>yarn.resourcemanager.webapp.address</name>\n"
+			+ "        <value>{master}:8088</value>\n" + "    </property>\n" + "    <property>\n"
+			+ "        <name>yarn.nodemanager.resource.memory-mb</name>\n" + "        <value>768</value>\n"
+			+ "    </property>\n" + "</configuration>\n";
+
+	private String slavesFileLocationTemplate = "{location}/etc/hadoop/slaves";
+
 	public boolean deployHadoopCluster(String location, String masterIp, List<String> slaveIpList) {
 		String coreSiteFileLocation = this.coreSiteFileLocationTemplate.replace("{master}", masterIp)
 				.replace("{location}", location);
@@ -110,6 +139,27 @@ public class DeployService {
 		for (String slaveIp : slaveIpList) {
 			this.getAgentHelper().upload(slaveIp, mapredSiteFileLocation, mapredSiteFileContent);
 		}
+
+		String yarnSiteFileLocation = this.yarnSiteFileLocationTemplate.replace("{master}", masterIp)
+				.replace("{location}", location);
+		String yarnSiteFileContent = this.yarnSiteFileContentTemplate.replace("{master}", masterIp)
+				.replace("{location}", location);
+		this.getAgentHelper().upload(masterIp, yarnSiteFileLocation, yarnSiteFileContent);
+		for (String slaveIp : slaveIpList) {
+			this.getAgentHelper().upload(slaveIp, yarnSiteFileLocation, yarnSiteFileContent);
+		}
+
+		String slavesFileLocation = this.slavesFileLocationTemplate.replace("{master}", masterIp).replace("{location}",
+				location);
+		String slavesFileContent = "";
+		for (String slaveIp : slaveIpList) {
+			slavesFileContent = slavesFileContent + (slaveIp + "\n");
+		}
+		this.getAgentHelper().upload(masterIp, slavesFileLocation, slavesFileContent);
+		for (String slaveIp : slaveIpList) {
+			this.getAgentHelper().upload(slaveIp, slavesFileLocation, slavesFileContent);
+		}
+
 		return true;
 	}
 }
