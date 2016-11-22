@@ -7,7 +7,7 @@ Agent部署在每台虚拟机上，用于执行基本的维护任务。
 * 部分API使用到了Linux Shell。
 
 ## API
-缓存分配工具提供了一组RESTful API。
+Agent提供了一组RESTful API。
 默认端口为10012。
 
 ### 执行命令
