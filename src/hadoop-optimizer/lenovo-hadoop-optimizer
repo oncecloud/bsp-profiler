@@ -1,0 +1,43 @@
+#=================================================================
+# Copyright(c) Institute of Software, Chinese Academy of Sciences
+#=================================================================
+# Author : wuyuewen@otcaix.iscas.ac.cn
+# Date   : 2017/01/06
+
+check_status() {
+	pidfile='/var/run/optimizer/oagent.pid'
+	if [ ! -f $pidfile ]; then
+		echo "optimizer agent is stopped"
+		exit 1
+	else
+		pid=`cat $pidfile`
+		ps -p $pid > /dev/null
+		if [ $? -eq 0 ]; then
+			echo "optimizer agent is running, pid is $pid"
+			exit 0
+		else
+			echo "optimizer agent is stopped, but pidfile at $pidfile is not cleaned. It may be caused by optimizer crashed at last time, manually cleaning it would be ok"
+			exit 1
+		fi
+	fi
+}
+
+if [ $# -eq 0 ]; then
+	echo "usage: $0
+[start|stop|restart|status]"
+	exit 1
+fi
+
+if [ "$@" = "status" ]; then
+	check_status
+else
+	python -c "from optimizer import odaemon; odaemon.main()" $@
+fi
+
+if [ $? -eq 0 ]; then
+    echo "$@ optimizer agent .... SUCCESS"
+    exit 0
+else
+    echo "$@ optimizer agent .... FAILED"
+    exit 1
+fi
