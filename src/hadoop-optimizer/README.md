@@ -45,9 +45,8 @@ Get master IP of specific Sahara cluster.
 
 **Status Codes:**
 
-- 204 - no error
-- 304 - domain already stopped
-- 404 - no such domain
+- 200 - no error
+- 400 - bad request
 - 500 - server error
 
 **Example request:**
