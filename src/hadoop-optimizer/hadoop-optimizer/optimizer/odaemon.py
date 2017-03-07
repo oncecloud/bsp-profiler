@@ -19,7 +19,7 @@ def prepare_pid_dir(path):
         os.makedirs(pdir)
     
 def main():
-    usage = 'usage: python -c "from optimizer import odaemon; odaemon.main()" start|stop|restart'
+    usage = 'usage: python -c "from optimizer import odaemon; odaemon.main()" start|stop|restart|status'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
         print usage
         sys.exit(1)

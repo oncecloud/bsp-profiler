@@ -9,3 +9,4 @@ pip install --force-reinstall dist/*.tar.gz
 cp -f ../lenovo-hadoop-optimizer /usr/bin
 chmod +x /usr/bin/lenovo-hadoop-optimizer
 /usr/bin/lenovo-hadoop-optimizer restart
+echo "/usr/bin/lenovo-hadoop-optimizer start" >> /etc/rc.local
