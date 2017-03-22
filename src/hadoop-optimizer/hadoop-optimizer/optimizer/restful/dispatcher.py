@@ -11,6 +11,8 @@ restful_api.add_resource(Prepare, '/v1.0/sahara-cluster/<string:cluster_name>/ma
 restful_api.add_resource(Deploy, '/v1.0/sahara-cluster/<string:cluster_name>/starfish/deploy')
 restful_api.add_resource(Setup, '/v1.0/sahara-cluster/<string:cluster_name>/benchmark/setup')
 restful_api.add_resource(Distribute, '/v1.0/sahara-cluster/<string:cluster_name>/btrace/distribute')
+restful_api.add_resource(Analysis, '/v1.0/sahara-cluster/<string:cluster_name>/rumen/analysis')
 restful_api.add_resource(Reconfigure, '/v1.0/sahara-cluster/<string:cluster_name>/yarn/reconfigure')
-
-
+restful_api.add_resource(Scale, '/v1.0/sahara-cluster/<string:cluster_name>/scale')
+restful_api.add_resource(CreateCluster, '/v1.0/sahara-cluster/create')
+restful_api.add_resource(Submit, '/v1.0/sahara-cluster/<string:cluster_name>/job/submit')
