@@ -22,3 +22,5 @@ atlassian-ide-plugin.xml
 .checkstyle
 nb-configuration.xml
 nbactions.xml
+*.pyc
+.pydevproject

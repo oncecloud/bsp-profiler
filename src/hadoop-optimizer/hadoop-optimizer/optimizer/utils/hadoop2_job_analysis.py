@@ -6,7 +6,6 @@
 
 import json
 import pprint
-from numpy import double
 
 RUN_WITHOUT_LOGGING = False
 log = None
@@ -19,11 +18,9 @@ except:
 
 class Hadoop2JobAnalysis(object):
     
-    def __init__(self, hadoop2_job_stats_dict, yarn_cluster_workers_number=10, yarn_max_memory_mb=8192, yarn_max_cpu=8, max_physical_memory_mb=0, max_cpu_core=0):
+    def __init__(self, hadoop2_job_stats_dict, yarn_cluster_workers_number=10, yarn_max_memory_mb=12288, yarn_max_cpu=12, yarn_container_memory_mb=1024, yarn_container_cpu=1, compute_node_max_memory_gb=65536, compute_node_max_cpu_core=24):
         self.hadoop2_job_stats = hadoop2_job_stats_dict
-        self.yarn_cluster_workers_number = yarn_cluster_workers_number
-        self.yarn_max_memory_mb = yarn_max_memory_mb
-        self.yarn_max_cpu = yarn_max_cpu
+        self.job_id = self.hadoop2_job_stats.get('jobID')
         self.job_submit_time = self.hadoop2_job_stats.get('submitTime')
         self.job_launch_time = self.hadoop2_job_stats.get('launchTime')
         self.job_finish_time = self.hadoop2_job_stats.get('finishTime')
@@ -56,14 +53,14 @@ class Hadoop2JobAnalysis(object):
         self.failed_reduce_attempt_total_time = 0
         self.failed_reduce_attempt_count = 0
         self.reduce_overview = []
-        self.need_scale = False
-        self.need_resize = False
+        self.cluster_advise = {}
         self.map_tasks_analysis()
         self.reduce_task_analysis()
-        self.cluster_recommend(memoryGbComputeNode, cpuCoreComputeNode)
-
+        self.cluster_analysis(int(yarn_cluster_workers_number), int(round(float(yarn_max_memory_mb)/1024)), int(yarn_max_cpu), int(round(float(yarn_container_memory_mb)/1024)), int(yarn_container_cpu), int(compute_node_max_memory_gb), int(compute_node_max_cpu_core))
+    
     def to_dict(self):
         retv = {
+            "jobID" : self.job_id,
             "jobSubmitTime" : self.job_submit_time,
             "jobLaunchTime" : self.job_launch_time,
             "jobFinishTime" : self.job_finish_time,
@@ -92,6 +89,7 @@ class Hadoop2JobAnalysis(object):
 #             "failedReduceAttemptCDFs" : self.failed_reduce_attempt_CDFs,
             "failedReduceAttemptTotalTime" : self.failed_reduce_attempt_total_time,
             "failedReduceAttemptCount" : self.failed_reduce_attempt_count,
+            "clusterAdvise" : self.cluster_advise,
             }
         if not RUN_WITHOUT_LOGGING:
             log.debug(pprint.pprint(retv))
@@ -105,8 +103,10 @@ class Hadoop2JobAnalysis(object):
         map_virtual_memory_usage_total = 0
         map_physical_memory_usage_total = 0
         map_cpu_time_usage_total = 0
-        map_run_time_total = 0
+        map_attempt_run_time_total = 0
         map_attempt_count = 0
+        map_attempt_input_bytes_total = 0
+        map_attempt_output_bytes_total = 0
         for map_task in map_tasks:
             map_records = {}
             for map_records_key in map_records_keys:
@@ -118,8 +118,10 @@ class Hadoop2JobAnalysis(object):
                 self.map_final_failed_task_ID.append(map_task.get('taskID'))
             cost_time = map_task.get('finishTime') - map_task.get('startTime')
             map_records['runTime'] = cost_time
-            map_records['inputUsageMbPerSec'] = '%.6f' % ((double(map_task.get('inputBytes')) / 1024 / 1024) / (double(cost_time) / 1000))
-            map_records['outputUsageMbPerSec'] = '%.6f' % ((double(map_task.get('outputBytes')) / 1024 / 1024) / (double(cost_time) / 1000))
+            map_attempt_input_bytes_total += map_task.get('inputBytes')
+            map_attempt_output_bytes_total += map_task.get('outputBytes')
+            map_records['inputMbPerSec'] = '%.6f' % ((float(map_task.get('inputBytes')) / 1024 / 1024) / (float(cost_time) / 1000))
+            map_records['outputMbPerSec'] = '%.6f' % ((float(map_task.get('outputBytes')) / 1024 / 1024) / (float(cost_time) / 1000))
             if not set_value_once[0]:
                 self.map_runtime_maximum = cost_time
                 self.map_runtime_minimum = cost_time
@@ -143,7 +145,7 @@ class Hadoop2JobAnalysis(object):
                     map_attempt_records = {}
                     map_attempt_records['spilledRecords'] = map_attempt.get('spilledRecords')
                     run_time = map_attempt.get('finishTime') - map_attempt.get('startTime')
-                    map_run_time_total += run_time
+                    map_attempt_run_time_total += run_time
                     map_attempt_result = map_attempt.get('result')
                     map_attempt_records['runTime'] = run_time
                     map_attempt_records['result'] = map_attempt_result
@@ -160,8 +162,8 @@ class Hadoop2JobAnalysis(object):
                     map_physical_memory_usage_total += physical_memory_usage
                     map_virtual_memory_usage_total += virtual_memory_usage
                     resource_usage_metrics_spec = {}
-                    resource_usage_metrics_spec['cpuUsagePerSec'] = '%.6f' % (double(cumulative_cpu_usage) / run_time)
-                    resource_usage_metrics_spec['physicalMemoryUsageMb'] = '%.6f' % (double(physical_memory_usage) / 1024 / 1024)
+                    resource_usage_metrics_spec['cpuUsagePerSec'] = '%.6f' % (float(cumulative_cpu_usage) / run_time)
+                    resource_usage_metrics_spec['physicalMemoryUsageMb'] = '%.6f' % (float(physical_memory_usage) / 1024 / 1024)
                     map_attempt_records['resourceUsageMetrics'] = resource_usage_metrics_spec
                     spilled_records = map_attempt.get('spilledRecords')
                     map_output_records = map_attempt.get('mapOutputRecords')
@@ -181,12 +183,15 @@ class Hadoop2JobAnalysis(object):
                         pass
             map_records['attempts'] = map_attempt_records_list
             self.map_overview.append(map_records)
-        self.job_resource_usage_metrics['mapCumulativeCpuUsageMilliseconds'] = map_cpu_time_usage_total
-        self.job_resource_usage_metrics['mapPhysicalMemoryUsageMB'] = '%.2f' % (double(map_physical_memory_usage_total) / 1024 / 1024)
-        self.job_resource_usage_metrics['mapVirtualMemoryUsageMB'] = '%.2f' % (double(map_virtual_memory_usage_total) / 1024 / 1024)
-        self.job_resource_usage_metrics['mapAverageCpuUsage'] = '%.6f' % (double(map_cpu_time_usage_total) / map_run_time_total)
-        self.job_resource_usage_metrics['mapAveragePhysicalMemoryUsageMB'] = '%.6f' % (double(map_physical_memory_usage_total) / 1024 / 1024 / map_attempt_count)
-        self.job_resource_usage_metrics['mapAverageVirtualMemoryUsageMB'] = '%.6f' % (double(map_virtual_memory_usage_total) / 1024 / 1024 / map_attempt_count)
+#         self.job_resource_usage_metrics['mapCumulativeCpuUsageMilliseconds'] = map_cpu_time_usage_total
+#         self.job_resource_usage_metrics['mapPhysicalMemoryUsageMb'] = '%.2f' % (float(map_physical_memory_usage_total) / 1024 / 1024)
+#         self.job_resource_usage_metrics['mapVirtualMemoryUsageMb'] = '%.2f' % (float(map_virtual_memory_usage_total) / 1024 / 1024)
+        self.job_resource_usage_metrics['mapAverageRunTime'] = '%.2f' % (float(map_attempt_run_time_total) / map_attempt_count)
+        self.job_resource_usage_metrics['mapAverageCpuUsage'] = '%.6f' % (float(map_cpu_time_usage_total) / map_attempt_run_time_total)
+        self.job_resource_usage_metrics['mapAveragePhysicalMemoryUsageMb'] = '%.6f' % (float(map_physical_memory_usage_total) / 1024 / 1024 / map_attempt_count)
+        self.job_resource_usage_metrics['mapAverageVirtualMemoryUsageMb'] = '%.6f' % (float(map_virtual_memory_usage_total) / 1024 / 1024 / map_attempt_count)
+        self.job_resource_usage_metrics['mapInputAverageIoRateMbPerSec'] = '%.6f' % (float(map_attempt_input_bytes_total) / 1024 / 1024 / map_attempt_run_time_total)
+        self.job_resource_usage_metrics['mapOutputAverageIoRateMbPerSec'] = '%.6f' % (float(map_attempt_output_bytes_total) / 1204 / 1024 / map_attempt_run_time_total)
             
     def reduce_task_analysis(self):
         total_reduces = self.hadoop2_job_stats.get('totalReduces')
@@ -196,8 +201,10 @@ class Hadoop2JobAnalysis(object):
         reduce_virtual_memory_usage_total = 0
         reduce_physical_memory_usage_total = 0
         reduce_cpu_time_usage_total = 0
-        reduce_run_time_total = 0
+        reduce_attempt_run_time_total = 0
         reduce_attempt_count = 0
+        reduce_attempt_input_bytes_total = 0
+        reduce_attempt_output_bytes_total = 0
         for reduce_task in reduce_tasks:
             reduce_records = {}
             for reduce_records_key in reduce_records_keys:
@@ -209,8 +216,10 @@ class Hadoop2JobAnalysis(object):
                 self.reduce_final_failed_task_ID.append(reduce_task.get('taskID'))
             cost_time = reduce_task.get('finishTime') - reduce_task.get('startTime')
             reduce_records['runTime'] = cost_time
-            reduce_records['inputUsageMbPerSec'] = '%.6f' % ((double(reduce_task.get('inputBytes')) / 1024 / 1024) / (double(cost_time) / 1000))
-            reduce_records['outputUsageMbPerSec'] = '%.6f' % ((double(reduce_task.get('outputBytes')) / 1024 / 1024) / (double(cost_time) / 1000))
+            reduce_attempt_input_bytes_total += reduce_task.get('inputBytes')
+            reduce_attempt_output_bytes_total += reduce_task.get('outputBytes')
+            reduce_records['inputMbPerSec'] = '%.6f' % ((float(reduce_task.get('inputBytes')) / 1024 / 1024) / (float(cost_time) / 1000))
+            reduce_records['outputMbPerSec'] = '%.6f' % ((float(reduce_task.get('outputBytes')) / 1024 / 1024) / (float(cost_time) / 1000))
             if not set_value_once[0]:
                 self.reduce_runtime_maximum = cost_time
                 self.reduce_runtime_minimum = cost_time
@@ -234,7 +243,7 @@ class Hadoop2JobAnalysis(object):
                     reduce_attempt_records = {}
                     reduce_attempt_records['spilledRecords'] = reduce_attempt.get('spilledRecords')
                     run_time = reduce_attempt.get('finishTime') - reduce_attempt.get('startTime')
-                    reduce_run_time_total += run_time
+                    reduce_attempt_run_time_total += run_time
                     reduce_attempt_result = reduce_attempt.get('result')
                     reduce_attempt_records['runTime'] = run_time
                     reduce_attempt_records['result'] = reduce_attempt_result
@@ -251,48 +260,91 @@ class Hadoop2JobAnalysis(object):
                     reduce_physical_memory_usage_total += physical_memory_usage
                     reduce_virtual_memory_usage_total += virtual_memory_usage
                     resource_usage_metrics_spec = {}
-                    resource_usage_metrics_spec['cpuUsagePerSec'] = '%.6f' % (double(cumulative_cpu_usage) / run_time)
-                    resource_usage_metrics_spec['physicalMemoryUsageMb'] = '%.6f' % (double(physical_memory_usage) / 1024 / 1024)
+                    resource_usage_metrics_spec['cpuUsagePerSec'] = '%.6f' % (float(cumulative_cpu_usage) / run_time)
+                    resource_usage_metrics_spec['physicalMemoryUsageMb'] = '%.6f' % (float(physical_memory_usage) / 1024 / 1024)
                     reduce_attempt_records['resourceUsageMetrics'] = resource_usage_metrics_spec
                     reduce_attempt_records_list.append(reduce_attempt_records)
             reduce_records['attempts'] = reduce_attempt_records_list
             self.reduce_overview.append(reduce_records)
-        self.job_resource_usage_metrics['reduceCumulativeCpuUsageMilliseconds'] = reduce_cpu_time_usage_total
-        self.job_resource_usage_metrics['reducePhysicalMemoryUsageMB'] = '%.2f' % (double(reduce_physical_memory_usage_total) / 1024 / 1024)
-        self.job_resource_usage_metrics['reduceVirtualMemoryUsageMB'] = '%.2f' % (double(reduce_virtual_memory_usage_total) / 1024 / 1024)
-        self.job_resource_usage_metrics['reduceAverageCpuUsage'] = '%.6f' % (double(reduce_cpu_time_usage_total) / reduce_run_time_total)
-        self.job_resource_usage_metrics['reduceAveragePhysicalMemoryUsageMB'] = '%.6f' % (double(reduce_physical_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
-        self.job_resource_usage_metrics['reduceAverageVirtualMemoryUsageMB'] = '%.6f' % (double(reduce_virtual_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
+#         self.job_resource_usage_metrics['reduceCumulativeCpuUsageMilliseconds'] = reduce_cpu_time_usage_total
+#         self.job_resource_usage_metrics['reducePhysicalMemoryUsageMb'] = '%.2f' % (float(reduce_physical_memory_usage_total) / 1024 / 1024)
+#         self.job_resource_usage_metrics['reduceVirtualMemoryUsageMb'] = '%.2f' % (float(reduce_virtual_memory_usage_total) / 1024 / 1024)
+        self.job_resource_usage_metrics['reduceAverageRunTime'] = '%.2f' % (float(reduce_attempt_run_time_total) / reduce_attempt_count)
+        self.job_resource_usage_metrics['reduceAverageCpuUsage'] = '%.6f' % (float(reduce_cpu_time_usage_total) / reduce_attempt_run_time_total)
+        self.job_resource_usage_metrics['reduceAveragePhysicalMemoryUsageMb'] = '%.6f' % (float(reduce_physical_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
+        self.job_resource_usage_metrics['reduceAverageVirtualMemoryUsageMb'] = '%.6f' % (float(reduce_virtual_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
+        self.job_resource_usage_metrics['reduceInputAverageIoRateMbPerSec'] = '%.6f' % (float(reduce_attempt_input_bytes_total) / 1024 / 1024 / reduce_attempt_run_time_total)
+        self.job_resource_usage_metrics['reduceOutputAverageIoRateMbPerSec'] = '%.6f' % (float(reduce_attempt_output_bytes_total) / 1024 / 1024 / reduce_attempt_run_time_total)
 
-    def cluster_recommed(self, memoryGbComputeNode, cpuCoreComputeNode):
-        intensive_resource = []
-        resource_recommed = {}
-        if self.job_resource_usage_metrics.get('mapAveragePhysicalMemoryUsageMB') > 1000 or \
-        self.job_resource_usage_metrics.get('reduceAveragePhysicalMemoryUsageMB') > 1000:
-            intensive_resource.append('memory')
-        elif self.job_resource_usage_metrics.get('mapAverageCpuUsage') > 0.5 or \
-        self.job_resource_usage_metrics.get('reduceAverageCpuUsage') > 0.5:
-            intensive_resource.append('cpu')
-        task_more = self.total_maps if cmp(self.total_maps, self.total_reduces) >= 0 else self.total_reduces
-        resource_less = cpuCoreComputeNode if cmp(memoryGbComputeNode, cpuCoreComputeNode) >=0 else memoryGbComputeNode-2
-        resource_less = resource_less if resource_less % 2 == 0 else resource_less - resource_less % 2
-        task_more = task_more if task_more % 2 == 0 else task_more - task_more % 2
-        for i in xrange(4, resource_less, -2):
-            if cmp(task_more, resource_less) >= 0: 
-                if task_more % resource_less == 0:
-                    resource_recommed['memroyGb'] = i
-                    resource_recommed['cpuNum'] = i
-                    break
-                else:
-                    continue
-            else:
-                recommend = task_more if task_more % 2 == 0 else task_more - task_more % 2
-                resource_recommed['memroyGb'] = i
-                resource_recommed['cpuNum'] = i
-                break
+    def cluster_analysis(self, yarn_cluster_workers_number, yarn_max_memory_gb, yarn_max_cpu, yarn_container_memory_gb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core):
+        scale_prediction = []
+        advise = ""
+        max_container_per_worker = min(yarn_max_memory_gb / yarn_container_memory_gb, yarn_max_cpu / yarn_container_cpu)
+        total_container_all_workers = int(max_container_per_worker * yarn_cluster_workers_number)
+        map_modulo_result = self.total_maps % total_container_all_workers
+        map_division_result = self.total_maps / total_container_all_workers
+        reduce_modulo_result = self.total_reduces % total_container_all_workers
+        reduce_division_result = self.total_reduces / total_container_all_workers
+        map_loops = map_division_result if map_modulo_result == 0 else map_division_result + 1 
+        reduce_loops = reduce_division_result if reduce_modulo_result == 0 else reduce_division_result + 1
+        bigger_loops = max(map_loops, reduce_loops)
+        if bigger_loops > 1: 
+            for decrease_N_loops in range(1, bigger_loops, 1):
+                decrease_loops_of_map = decrease_N_loops if cmp(map_loops-1, decrease_N_loops) >= 0 else map_loops-1
+                decrease_loops_of_reduce = decrease_N_loops if cmp(reduce_loops-1, decrease_N_loops) >=0 else reduce_loops-1
+                loops_now = max(map_loops - decrease_loops_of_map, reduce_loops - decrease_loops_of_reduce)
+                time_opt_of_decrease_loops_of_map = self.map_runtime_minimum * decrease_loops_of_map
+                time_opt_of_decrease_loops_of_reduce = self.reduce_runtime_minimum * decrease_loops_of_reduce
+                containers_demands_for_current_loops = self.total_maps / loops_now + self.total_maps % loops_now \
+                if map_loops > reduce_loops else self.total_reduces / loops_now + self.total_reduces % loops_now
+                total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
+                scale_out_workers = int(round(float(containers_demands_for_current_loops) / max_container_per_worker))
+                scale_out_for_decrease_N_loop = {"workers" : scale_out_workers,
+                                                 "cpuCore" : yarn_max_cpu,
+                                                 "memoryGb" : yarn_max_memory_gb,
+                                                 "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_out_workers - yarn_cluster_workers_number) * max_container_per_worker) / (float(total_time_opt) / 1000)),
+                                                 }
+                scale_up_container_per_worker = int(round(float(containers_demands_for_current_loops) / yarn_cluster_workers_number))
+                scale_up_for_decrease_N_loop = {"workers" : yarn_cluster_workers_number,
+                                                "cpuCore" : yarn_container_cpu * scale_up_container_per_worker, 
+                                                "memoryGb" : yarn_container_memory_gb * scale_up_container_per_worker,
+                                                "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_up_container_per_worker - max_container_per_worker) * yarn_cluster_workers_number) / (float(total_time_opt) / 1000) ),
+                                                }
+                details_for_decrease_N_loops = {"mapLoopsNow" : map_loops - decrease_loops_of_map,
+                                                "reduceLoopsNow" : reduce_loops - decrease_loops_of_reduce,
+                                                "decreaseLoopsOfMap" : decrease_loops_of_map,
+                                                "decreaseLoopsOfReduce" : decrease_loops_of_reduce,
+                                                "timeOptimizationOfDecreaseLoopsOfMap" : time_opt_of_decrease_loops_of_map,
+                                                "timeOptimizationOfDecreaseLoopsOfReduce" : time_opt_of_decrease_loops_of_reduce,
+                                                "timeOptimizationTotal" : total_time_opt,
+                                                "scaleUpForDecreaseLoops" : scale_up_for_decrease_N_loop,
+                                                "scaleOutForDecreaseLoops" : scale_out_for_decrease_N_loop}
+                scale_prediction.append(details_for_decrease_N_loops)
+            advise += "Scale current cluster to optimize Job's elapsed, details in scalePrediction. p.s. Any bottleneck resource may interfere scale prediction. "
+        else:
+            advise += "No need to scale. "
+            scale_prediction.append({})
+        mapInputParallelIoRateMbPerSec = '%.6f' % (float(self.job_resource_usage_metrics['mapInputAverageIoRateMbPerSec']) * total_container_all_workers)
+        mapOutputParallelIoRateMbPerSec = '%.6f' % (float(self.job_resource_usage_metrics['mapOutputAverageIoRateMbPerSec']) * total_container_all_workers)
+        reduceInputParallelIoRateMbPerSec = '%.6f' % (float(self.job_resource_usage_metrics['reduceInputAverageIoRateMbPerSec']) * total_container_all_workers)
+        reduceOutputParallelIoRateMbPerSec = '%.6f' % (float(self.job_resource_usage_metrics['reduceOutputAverageIoRateMbPerSec']) * total_container_all_workers)
+        if float(self.job_resource_usage_metrics.get('mapAverageCpuUsage')) >= 0.9 or float(self.job_resource_usage_metrics.get('reduceAverageCpuUsage')) >= 0.9:
+            advise += "CPU bottleneck exists in YARN container, mapAverageCpuUsage=%s, reduceAverageCpuUsage=%s. " \
+            % (self.job_resource_usage_metrics.get('mapAverageCpuUsage'), self.job_resource_usage_metrics.get('reduceAverageCpuUsage'))
+        if float(self.job_resource_usage_metrics.get('mapAveragePhysicalMemoryUsageMb')) >= yarn_container_memory_gb * 1024 or float(self.job_resource_usage_metrics.get('reduceAveragePhysicalMemoryUsageMb')) >= yarn_container_memory_gb * 1024:
+            advise += "Memory bottleneck exists in YARN container, mapAveragePhysicalMemoryUsageMb=%s, reduceAverageCpuUsage=%s. " \
+            % (self.job_resource_usage_metrics.get('mapAveragePhysicalMemoryUsageMb'), self.job_resource_usage_metrics.get('reduceAveragePhysicalMemoryUsageMb'))
+        advise += "Disk parallel IO rate Mb/s details: mapInputParallelIoRateMbPerSec=%s, mapOutputParallelIoRateMbPerSec=%s, reduceInputParallelIoRateMbPerSec=%s, reduceOutputParallelIoRateMbPerSec=%s. " \
+        % (mapInputParallelIoRateMbPerSec, mapOutputParallelIoRateMbPerSec, reduceInputParallelIoRateMbPerSec, reduceOutputParallelIoRateMbPerSec)
+        self.cluster_advise['advise'] = advise
+        self.cluster_advise['scalePrediction'] = scale_prediction
 
     def get_hadoop_2_job_stats(self):
         return self.__hadoop2_job_stats
+
+
+    def get_job_id(self):
+        return self.__job_id
 
 
     def get_job_submit_time(self):
@@ -313,6 +365,14 @@ class Hadoop2JobAnalysis(object):
 
     def get_job_elapsed(self):
         return self.__job_elapsed
+
+
+    def get_total_maps(self):
+        return self.__total_maps
+
+
+    def get_total_reduces(self):
+        return self.__total_reduces
 
 
     def get_job_resource_usage_metrics(self):
@@ -415,16 +475,16 @@ class Hadoop2JobAnalysis(object):
         return self.__reduce_overview
 
 
-    def get_need_scale(self):
-        return self.__need_scale
-
-
-    def get_need_resize(self):
-        return self.__need_resize
+    def get_cluster_advise(self):
+        return self.__cluster_advise
 
 
     def set_hadoop_2_job_stats(self, value):
         self.__hadoop2_job_stats = value
+
+
+    def set_job_id(self, value):
+        self.__job_id = value
 
 
     def set_job_submit_time(self, value):
@@ -445,6 +505,14 @@ class Hadoop2JobAnalysis(object):
 
     def set_job_elapsed(self, value):
         self.__job_elapsed = value
+
+
+    def set_total_maps(self, value):
+        self.__total_maps = value
+
+
+    def set_total_reduces(self, value):
+        self.__total_reduces = value
 
 
     def set_job_resource_usage_metrics(self, value):
@@ -547,16 +615,16 @@ class Hadoop2JobAnalysis(object):
         self.__reduce_overview = value
 
 
-    def set_need_scale(self, value):
-        self.__need_scale = value
-
-
-    def set_need_resize(self, value):
-        self.__need_resize = value
+    def set_cluster_advise(self, value):
+        self.__cluster_advise = value
 
 
     def del_hadoop_2_job_stats(self):
         del self.__hadoop2_job_stats
+
+
+    def del_job_id(self):
+        del self.__job_id
 
 
     def del_job_submit_time(self):
@@ -577,6 +645,14 @@ class Hadoop2JobAnalysis(object):
 
     def del_job_elapsed(self):
         del self.__job_elapsed
+
+
+    def del_total_maps(self):
+        del self.__total_maps
+
+
+    def del_total_reduces(self):
+        del self.__total_reduces
 
 
     def del_job_resource_usage_metrics(self):
@@ -679,19 +755,18 @@ class Hadoop2JobAnalysis(object):
         del self.__reduce_overview
 
 
-    def del_need_scale(self):
-        del self.__need_scale
-
-
-    def del_need_resize(self):
-        del self.__need_resize
+    def del_cluster_advise(self):
+        del self.__cluster_advise
 
     hadoop2_job_stats = property(get_hadoop_2_job_stats, set_hadoop_2_job_stats, del_hadoop_2_job_stats, "hadoop2_job_stats's docstring")
+    job_id = property(get_job_id, set_job_id, del_job_id, "job_id's docstring")
     job_submit_time = property(get_job_submit_time, set_job_submit_time, del_job_submit_time, "job_submit_time's docstring")
     job_launch_time = property(get_job_launch_time, set_job_launch_time, del_job_launch_time, "job_launch_time's docstring")
     job_finish_time = property(get_job_finish_time, set_job_finish_time, del_job_finish_time, "job_finish_time's docstring")
     job_run_time = property(get_job_run_time, set_job_run_time, del_job_run_time, "job_run_time's docstring")
     job_elapsed = property(get_job_elapsed, set_job_elapsed, del_job_elapsed, "job_elapsed's docstring")
+    total_maps = property(get_total_maps, set_total_maps, del_total_maps, "total_maps's docstring")
+    total_reduces = property(get_total_reduces, set_total_reduces, del_total_reduces, "total_reduces's docstring")
     job_resource_usage_metrics = property(get_job_resource_usage_metrics, set_job_resource_usage_metrics, del_job_resource_usage_metrics, "job_resource_usage_metrics's docstring")
     map_contain_final_failed = property(get_map_contain_final_failed, set_map_contain_final_failed, del_map_contain_final_failed, "map_contain_final_failed's docstring")
     map_final_failed_task_ID = property(get_map_final_failed_task_id, set_map_final_failed_task_id, del_map_final_failed_task_id, "map_final_failed_task_ID's docstring")
@@ -717,32 +792,34 @@ class Hadoop2JobAnalysis(object):
     failed_reduce_attempt_total_time = property(get_failed_reduce_attempt_total_time, set_failed_reduce_attempt_total_time, del_failed_reduce_attempt_total_time, "failed_reduce_attempt_total_time's docstring")
     failed_reduce_attempt_count = property(get_failed_reduce_attempt_count, set_failed_reduce_attempt_count, del_failed_reduce_attempt_count, "failed_reduce_attempt_count's docstring")
     reduce_overview = property(get_reduce_overview, set_reduce_overview, del_reduce_overview, "reduce_overview's docstring")
-    need_scale = property(get_need_scale, set_need_scale, del_need_scale, "need_scale's docstring")
-    need_resize = property(get_need_resize, set_need_resize, del_need_resize, "need_resize's docstring")
-                        
+    cluster_advise = property(get_cluster_advise, set_cluster_advise, del_cluster_advise, "cluster_advise's docstring")
+
 if __name__ == '__main__':
     from hadoop2_job_stats import Hadoop2JobStats
-    jhist1 = json.load(file("/Users/frank/Downloads/job_TeraSort_8G8U_minimem_2048.json"))
-    j1 = Hadoop2JobStats(jhist1)
-    a1 = Hadoop2JobAnalysis(j1.to_dict())
-    print "===============Hadoop cluster: 10 workers(8G/8U)================"
-    print "Job elapsed: %s seconds" % (a1.get_job_elapsed() / 1000)
-    pprint.pprint(a1.get_reduce_overview())
-    pprint.pprint(a1.get_map_overview())
-    print "\n"
+#     jhist1 = json.load(file("/Users/frank/Downloads/TS_12G12U_10_1-trace.json"))
+#     j1 = Hadoop2JobStats(jhist1)
+#     a1 = Hadoop2JobAnalysis(j1.to_dict())
+# #     print "===============Hadoop cluster: 10 workers(8G/8U)================"
+#     print "Job elapsed: %s seconds" % (a1.get_job_elapsed() / 1000)
+#     pprint.pprint(a1.to_dict())
+# #     pprint.pprint(a1.get_reduce_overview())
+# #     pprint.pprint(a1.get_map_overview())
+#     print "\n"
     
-#     jhist2 = json.load(file("/Users/frank/Downloads/job_TeraSort_4G8U.json"))
-#     j2 = Hadoop2JobStats(jhist2)
-#     a2 = Hadoop2JobAnalysis(j2.to_dict())
+    jhist2 = json.load(file("/Users/frank/Downloads/TS_12G12U_10_1-trace.json"))
+    j2 = Hadoop2JobStats(jhist2)
+    a2 = Hadoop2JobAnalysis(j2.to_dict())
 #     print "===============Hadoop cluster: 10 workers(4G/8U)================"
 #     print "Job elapsed: %s seconds" % (a2.get_job_elapsed() / 1000)
-#     pprint.pprint(a2.job_resource_usage_metrics)
-#     print "\n"
+    pprint.pprint(a2.to_dict())
+    print "\n"
 #     
-#     jhist3 = json.load(file("/Users/frank/Downloads/job_TeraSort_4G4U.json"))
+#     jhist3 = json.load(file("/Users/frank/Downloads/TS_4G4U_10_1-trace.json"))
 #     j3 = Hadoop2JobStats(jhist3)
 #     a3 = Hadoop2JobAnalysis(j3.to_dict())
-#     print "===============Hadoop cluster: 10 workers(4G/4U)================"
-#     print "Job elapsed: %s seconds" % (a3.get_job_elapsed() / 1000)
-#     pprint.pprint(a3.job_resource_usage_metrics)
+# #     print "===============Hadoop cluster: 10 workers(4G/4U)================"
+# #     print "Job elapsed: %s seconds" % (a3.get_job_elapsed() / 1000)
+#     pprint.pprint(a3.to_dict())
+# #     pprint.pprint(a1.get_map_overview())
+# #     pprint.pprint(a1.get_reduce_overview())
     

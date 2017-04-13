@@ -141,10 +141,10 @@ class Analysis(Resource):
     def __init__(self):
         self.scriptName = "analysis.py"
         
-    def _analysis_jhist_json(self, jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, memoryGbComputeNode, cpuCoreComputeNode):
+    def _analysis_jhist_json(self, jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core):
         jhist_dict_data = json.load(file(jhist_json_path))
         key_stats_dict = Hadoop2JobStats(jhist_dict_data).to_dict()
-        analysis_dict = Hadoop2JobAnalysis(key_stats_dict, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, memoryGbComputeNode, cpuCoreComputeNode).to_dict()
+        analysis_dict = Hadoop2JobAnalysis(key_stats_dict, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core).to_dict()
         return analysis_dict
     
     def _get_workers_number_from_topology_json(self, topology_json_path):
@@ -172,12 +172,12 @@ class Analysis(Resource):
             dict_data = JSONDecoder().decode(json_str)
             jobID = dict_data.get('jobID')
             workDir = dict_data.get('workDir')
-            cpuCoreComputeNode = dict_data.get('cpuCoreComputeNode')
-            memoryGbComputeNode = dict_data.get('memoryGbComputeNode') 
+            compute_node_max_cpu_core = dict_data.get('computeNodeMaxCpuCore')
+            compute_node_max_memory_gb = dict_data.get('computeNodeMaxMemoryGb') 
             scriptName = dict_data.get('scriptName', self.scriptName)
             sshKeyPath = dict_data.get('sshKeyPath')
             masterIP = shell.call(get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name)).strip()
-            if not workDir or not sshKeyPath or not masterIP or not jobID or not cpuCoreComputeNode or not memoryGbComputeNode:
+            if not workDir or not sshKeyPath or not masterIP or not jobID or not compute_node_max_cpu_core or not compute_node_max_memory_gb:
                 abort(400, message="bad parameter in request body")
             jhist_json_path = "%s/%s-trace.json" % (work_path, jobID)
             topology_json_path = "%s/%s-topology.json" % (work_path, jobID)
@@ -189,12 +189,16 @@ class Analysis(Resource):
                        % (sshKeyPath, masterIP, cluster_name, jobID, jhist_json_path))
             shell.call("ssh -i %s centos@%s \"sudo su - -c \'cat /home/hadoop/%s/%s-topology.json\' hadoop\" > %s" \
                        % (sshKeyPath, masterIP, cluster_name, jobID, topology_json_path))
-            get_yarn_max_cpu = shell.call("ssh -i %s centos@%s \"sudo grep -A 1 \'yarn.nodemanager.resource.cpu-vcores\' /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1 \"" % (sshKeyPath, masterIP)).strip()
-            get_yarn_max_memory_mb = shell.call("ssh -i %s centos@%s \"sudo grep -A 1 \'yarn.nodemanager.resource.memory-mb\' /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1 \"" % (sshKeyPath, masterIP)).strip()
+            get_yarn_max_cpu = shell.call("ssh -i %s centos@%s \"sudo grep -A 1 \'yarn.scheduler.maximum-allocation-vcores\' /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1 \"" % (sshKeyPath, masterIP)).strip()
+            get_yarn_max_memory_mb = shell.call("ssh -i %s centos@%s \"sudo grep -A 1 \'yarn.scheduler.maximum-allocation-mb\' /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1 \"" % (sshKeyPath, masterIP)).strip()
+            get_yarn_container_cpu = shell.call("ssh -i %s centos@%s \"sudo grep -A 1 \'yarn.scheduler.minimum-allocation-vcores\' /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1 \"" % (sshKeyPath, masterIP)).strip()
+            get_yarn_container_memory_mb = shell.call("ssh -i %s centos@%s \"sudo grep -A 1 \'yarn.scheduler.minimum-allocation-mb\' /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1 \"" % (sshKeyPath, masterIP)).strip()
             yarn_max_cpu = int(re.sub(r'\D', '', get_yarn_max_cpu)) if get_yarn_max_cpu else 8
             yarn_max_memory_mb = int(re.sub(r'\D', '', get_yarn_max_memory_mb)) if get_yarn_max_memory_mb else 8192
+            yarn_container_cpu = int(re.sub(r'\D', '', get_yarn_container_cpu)) if get_yarn_container_cpu else 1
+            yarn_container_memory_mb = int(re.sub(r'\D', '', get_yarn_container_memory_mb)) if get_yarn_container_memory_mb else 1024
             yarn_cluster_workers_number = self._get_workers_number_from_topology_json(topology_json_path)
-            output = self._analysis_jhist_json(jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, memoryGbComputeNode, cpuCoreComputeNode)
+            output = self._analysis_jhist_json(jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core)
             return output_json(output, 200)
         except Exception:
             log.exception(traceback.format_exc())
