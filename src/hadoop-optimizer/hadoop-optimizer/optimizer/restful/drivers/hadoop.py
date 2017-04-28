@@ -141,10 +141,10 @@ class Analysis(Resource):
     def __init__(self):
         self.scriptName = "analysis.py"
         
-    def _analysis_jhist_json(self, jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core):
+    def _analysis_jhist_json(self, jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core):
         jhist_dict_data = json.load(file(jhist_json_path))
         key_stats_dict = Hadoop2JobStats(jhist_dict_data).to_dict()
-        analysis_dict = Hadoop2JobAnalysis(key_stats_dict, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core).to_dict()
+        analysis_dict = Hadoop2JobAnalysis(key_stats_dict, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core).to_dict()
         return analysis_dict
     
     def _get_workers_number_from_topology_json(self, topology_json_path):
@@ -154,7 +154,7 @@ class Analysis(Resource):
         if children_list:
             children_sub_list = children_list[0]
             if children_sub_list:
-                retv = len(children_sub_list)
+                retv = len(children_sub_list.get('children'))
             else:
                 raise Exception("No sub list of children in %s" % topology_json_path)
         else:
@@ -217,6 +217,10 @@ class Reconfigure(Resource):
             dict_data = JSONDecoder().decode(json_str)
             masterIP = shell.call(get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name)).strip()
             sshKeyPath = dict_data.get('sshKeyPath')
+            restartDataNode = dict_data.get('restartDataNode', False)
+            restartNameNode = dict_data.get('restartNameNode', False)
+            restartHistoryServer = dict_data.get('restartHistoryServer', False)
+            restartNodeManager = dict_data.get('restartNodeManager', False)
             vcpuNum = dict_data.get('vcpuNum')
             memMB = dict_data.get('memMB')
             if not masterIP or not sshKeyPath or not vcpuNum or not memMB:
@@ -225,8 +229,13 @@ class Reconfigure(Resource):
                 project_name = request.args.get('project', "admin")
                 slaveIPArray = shell.call(get_sahara_cluster_s_slavesIP_cmd(project_name, cluster_name)).strip()
                 slaveIPArrayStr = str(slaveIPArray).replace("\n", " ")
-                script_setting_str = "master_ip=%s\nslave_ip_array=(%s)\nuser=centos\nssh_key=\\\"%s\\\"\nyarn_vcpu_new_value=\\\"<value>%s<\/value>\\\"\nyarn_mem_new_value=\\\"<value>%s<\/value>\\\"" \
-                                    % (masterIP, slaveIPArrayStr, sshKeyPath, str(vcpuNum), str(memMB))
+                restartServicesArrayStr = "resourcemanager%s%s%s%s" \
+                % (" nodemanager" if to_bool(restartNodeManager) else "", \
+                   " namenode" if to_bool(restartNameNode) else "", \
+                   " datanode" if to_bool(restartDataNode) else "", \
+                   " historyserver" if to_bool(restartHistoryServer) else "")
+                script_setting_str = "master_ip=%s\nslave_ip_array=(%s)\nrestart_services_array=(%s)\nuser=centos\nssh_key=\\\"%s\\\"\nyarn_vcpu_new_value=\\\"<value>%s<\/value>\\\"\nyarn_mem_new_value=\\\"<value>%s<\/value>\\\"" \
+                                    % (masterIP, slaveIPArrayStr, restartServicesArrayStr, sshKeyPath, str(vcpuNum), str(memMB))
                 work_path = "/home/optimizer/%s" % cluster_name
                 if not os.path.exists(work_path):
                     os.makedirs(work_path)

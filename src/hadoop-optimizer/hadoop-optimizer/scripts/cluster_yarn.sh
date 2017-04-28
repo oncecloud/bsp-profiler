@@ -31,6 +31,30 @@ nodemanager_stop="sudo su - -c  \"yarn-daemon.sh stop nodemanager\" hadoop"
 historyserver_stop="sudo su - -c \"mr-jobhistory-daemon.sh stop historyserver\" hadoop"
 namenode_stop="sudo su - -c \"hadoop-daemon.sh stop namenode\" hadoop"
 resourcemanager_stop="sudo su - -c  \"yarn-daemon.sh stop resourcemanager\" hadoop"
+master_stop_cmd="$del_loopback"
+master_start_cmd="$del_loopback"
+worker_stop_cmd="$del_loopback"
+worker_start_cmd="$del_loopback"
+
+for restart_service in ${restart_services_array[@]}
+do
+	if [[ $restart_service == "resourcemanager" ]];then
+		master_stop_cmd=$master_stop_cmd" && $resourcemanager_stop"
+		master_start_cmd=$master_start_cmd" && $resourcemanager_start"
+	elif [[ $restart_service == "namenode" ]];then
+		master_stop_cmd=$master_stop_cmd" && $namenode_stop"
+		master_start_cmd=$master_start_cmd" && $namenode_start"
+	elif [[ $restart_service == "historyserver" ]];then
+		master_stop_cmd=$master_stop_cmd" && $historyserver_stop"
+		master_start_cmd=$master_start_cmd" && $historyserver_start"
+	elif [[ $restart_service == "nodemanager" ]];then
+		worker_stop_cmd=$worker_stop_cmd" && $nodemanager_stop"
+		worker_start_cmd=$worker_start_cmd" && $nodemanager_start"
+	elif [[ $restart_service == "datanode" ]];then
+		worker_stop_cmd=$worker_stop_cmd" && $datanode_stop"
+		worker_start_cmd=$worker_start_cmd" && $datanode_start"
+	fi
+done
 
 #yarn_stop="sudo su - -c \"/opt/hadoop/sbin/stop-yarn.sh\" hadoop"
 #yarn_start="sudo su - -c \"/opt/hadoop/sbin/start-yarn.sh\" hadoop"
@@ -42,19 +66,19 @@ replace_yarn_config()
 
 stop_yarn()
 {
-    ssh -i $ssh_key $user@$master_ip "$del_loopback && $historyserver_stop && $namenode_stop && $resourcemanager_stop"
+    ssh -i $ssh_key $user@$master_ip "$master_stop_cmd"
     for slave_ip in ${slave_ip_array[@]}
     do
-        ssh -i $ssh_key $user@$slave_ip "$del_loopback && $datanode_stop && $nodemanager_stop"
+        ssh -i $ssh_key $user@$slave_ip "$worker_stop_cmd"
     done
 }
 
 start_yarn()
 {
-    ssh -i $ssh_key $user@$master_ip "$del_loopback && $historyserver_start && $namenode_start && $resourcemanager_start"
+    ssh -i $ssh_key $user@$master_ip "$master_start_cmd"
     for slave_ip in ${slave_ip_array[@]}
     do
-        ssh -i $ssh_key $user@$slave_ip "$del_loopback && $datanode_start && $nodemanager_start"
+        ssh -i $ssh_key $user@$slave_ip "$worker_start_cmd"
     done
 }
 

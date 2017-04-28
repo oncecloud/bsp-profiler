@@ -7,16 +7,6 @@
 import json
 import pprint
 
-RUN_WITHOUT_LOGGING = False
-log = None
-
-try:
-    from optimizer import app
-    log = app.logger
-except:
-    RUN_WITHOUT_LOGGING = True
-
-
 class Hadoop2JobStats(object):
 
     def __init__(self, jhist_dict_data):
@@ -53,8 +43,6 @@ class Hadoop2JobStats(object):
             "failedMapAttemptCDFs" : self.get_failed_map_attempt_cdfs(),
             "failedReduceAttemptCDF" : self.get_failed_reduce_attempt_cdf()
             }
-        if not RUN_WITHOUT_LOGGING:
-            log.debug(pprint.pprint(retv))
         return retv
     
     def _successful_map_attempt_CDFs_filter(self, jhist_successful_map_attempt_CDFs):
