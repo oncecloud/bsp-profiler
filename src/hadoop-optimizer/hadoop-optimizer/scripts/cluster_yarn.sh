@@ -66,19 +66,19 @@ replace_yarn_config()
 
 stop_yarn()
 {
-    ssh -i $ssh_key $user@$master_ip "$master_stop_cmd"
+    ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$master_stop_cmd"
     for slave_ip in ${slave_ip_array[@]}
     do
-        ssh -i $ssh_key $user@$slave_ip "$worker_stop_cmd"
+        ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$worker_stop_cmd"
     done
 }
 
 start_yarn()
 {
-    ssh -i $ssh_key $user@$master_ip "$master_start_cmd"
+    ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$master_start_cmd"
     for slave_ip in ${slave_ip_array[@]}
     do
-        ssh -i $ssh_key $user@$slave_ip "$worker_start_cmd"
+        ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$worker_start_cmd"
     done
 }
 
@@ -90,11 +90,11 @@ restart_yarn()
 
 reconfigure_yarn()
 {
-    yarn_vcpu_value=`ssh -i $ssh_key $user@$master_ip "$yarn_vcpu_old_value"`
-    yarn_mem_value=`ssh -i $ssh_key $user@$master_ip "$yarn_mem_old_value"`
+    yarn_vcpu_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_vcpu_old_value"`
+    yarn_mem_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_mem_old_value"`
     if [ -z "$yarn_vcpu_value" ];then
         echo "Add default vcpu settings in Yarn configure file."
-        `ssh -i $ssh_key $user@$master_ip "$extend_yarn_default_vcpu_setting"`
+        `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_vcpu_setting"`
         yarn_vcpu_value=$yarn_vcpu_new_value
     else
         yarn_vcpu_value=${yarn_vcpu_value/\//\\/}
@@ -102,15 +102,15 @@ reconfigure_yarn()
     yarn_mem_value=${yarn_mem_value/\//\\/}
     edit_yarn_vcpu_config=`replace_yarn_config $yarn_vcpu_value $yarn_vcpu_new_value`
     edit_yarn_mem_config=`replace_yarn_config $yarn_mem_value $yarn_mem_new_value`
-    ssh -i $ssh_key $user@$master_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config"
+    ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config"
     
     for slave_ip in ${slave_ip_array[@]}
     do
-        yarn_vcpu_value=`ssh -i $ssh_key $user@$slave_ip "$yarn_vcpu_old_value"`
-        yarn_mem_value=`ssh -i $ssh_key $user@$slave_ip "$yarn_mem_old_value"`
+        yarn_vcpu_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$yarn_vcpu_old_value"`
+        yarn_mem_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$yarn_mem_old_value"`
         if [ -z "$yarn_vcpu_value" ];then
             echo "Add default vcpu settings in Yarn configure file."
-            `ssh -i $ssh_key $user@$slave_ip "$extend_yarn_default_vcpu_setting"`
+            `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$extend_yarn_default_vcpu_setting"`
             yarn_vcpu_value=$yarn_vcpu_new_value
         else
             yarn_vcpu_value=${yarn_vcpu_value/\//\\/}
@@ -118,9 +118,107 @@ reconfigure_yarn()
         yarn_mem_value=${yarn_mem_value/\//\\/}
         edit_yarn_vcpu_config=`replace_yarn_config $yarn_vcpu_value $yarn_vcpu_new_value`
         edit_yarn_mem_config=`replace_yarn_config $yarn_mem_value $yarn_mem_new_value`
-        ssh -i $ssh_key $user@$slave_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config"
+        ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config"
     done
     restart_yarn
+}
+
+install_ganglia()
+{
+	if [ -n "$1" ];then
+		echo "Restarting ganglia services in cluster $cluster_name."
+	else
+		echo "Installing ganglia services in cluster $cluster_name."
+		scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r ganglia_rpms $user@$master_ip:~`
+		install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo rpm -Uvh --force ~/ganglia_rpms/master/*.rpm"`
+	fi
+	echo "Now working on Master."
+	echo "Changing authorization of (web, rrd, dwoo) directories."
+	ln_ganglia_web=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo ln -sf /usr/share/ganglia /var/www/html"`
+	chown_ganglia_web=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo chown -R apache:apache /var/www/html/ganglia"`
+	chmod_ganglia_web=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo chmod -R 755 /var/www/html/ganglia"`
+	chown_ganglia_rrd=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo chown -R nobody:nobody /var/lib/ganglia/rrds"`
+	chmod_ganglia_dwoo1=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo chmod 777 /var/lib/ganglia/dwoo/compiled"`
+	chmod_ganglia_dwoo2=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo chmod 777 /var/lib/ganglia/dwoo/cache"`
+	master_hostname=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "hostname"`
+	echo "Backing up configuration files."
+	test_backup_files=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo test -f /etc/ganglia/gmond.conf.bak"`
+	if [[ $? -eq 0 ]];then
+		init_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo cp /etc/httpd/conf.d/ganglia.conf.bak /etc/httpd/conf.d/ganglia.conf && sudo cp /etc/ganglia/gmetad.conf.bak /etc/ganglia/gmetad.conf && sudo cp /etc/ganglia/gmond.conf.bak /etc/ganglia/gmond.conf"`
+	fi
+	backup_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo cp /etc/httpd/conf.d/ganglia.conf /etc/httpd/conf.d/ganglia.conf.bak && sudo cp /etc/ganglia/gmetad.conf /etc/ganglia/gmetad.conf.bak && sudo cp /etc/ganglia/gmond.conf /etc/ganglia/gmond.conf.bak"`
+	echo "Changing configurations in (/etc/httpd/conf.d/ganglia.conf, /etc/ganglia/gmetad.conf, /etc/ganglia/gmond.conf)."
+	replace_settings_in_ganglia_dot_conf=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/  Require local/  Require all granted/g' /etc/httpd/conf.d/ganglia.conf"`
+	gmeted_replace_str="$master_hostname:8649 "
+	for slave_ip in ${slave_ip_array[@]}
+	do
+		slave_hostname=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "hostname"`
+		append_string="$slave_hostname:8649 "
+		gmeted_replace_str=$gmeted_replace_str$append_string
+	done
+	replace_settings_in_gmeted_dot_conf1=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/data_source \"my cluster\" localhost/data_source  \"$cluster_name\" $gmeted_replace_str/g' /etc/ganglia/gmetad.conf"`
+	replace_settings_in_gmeted_dot_conf2=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/setuid_username ganglia/setuid_username nobody/g' /etc/ganglia/gmetad.conf"`
+	replace_settings_in_gmond_dot_conf1=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/  name = \"unspecified\"/  name = \"$cluster_name\"/g' /etc/ganglia/gmond.conf"`
+	replace_settings_in_gmond_dot_conf2=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/  mcast_join = 239.2.11.71/  #mcast_join = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
+	replace_settings_in_gmond_dot_conf3=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/  bind = 239.2.11.71/  #bind = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
+	replace_settings_in_gmond_dot_conf4=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i 's/  retry_bind = true/  #retry_bind = true/g' /etc/ganglia/gmond.conf"`
+	get_master_ip_settings_in_gmond_dot_conf=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo grep -i \"  host = \" /etc/ganglia/gmond.conf"`
+	if [ -n $get_master_ip_settings_in_gmond_dot_conf ]
+	then
+		replace_settings_in_gmond_dot_conf5=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo sed -i '/udp_send_channel {/a\  host = $master_hostname' /etc/ganglia/gmond.conf"`
+	fi
+	echo "Starting & enabling services (httpd, gmetad, gmond)."
+	restart_and_enable_http_service=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo systemctl restart httpd.service && sudo systemctl enable httpd.service"`
+	if [[ $? -eq 0 ]];then
+		echo -e "Restart service httpd status: \033[42;37m Success \033[0m"
+	else
+		echo -e "Restart service httpd status: \033[41;37m Failed \033[0m"
+	fi
+	restart_and_enable_gmetad_service=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo systemctl restart gmetad.service && sudo systemctl enable gmetad.service"`
+	if [[ $? -eq 0 ]];then
+		echo -e "Restart service gmetad status: \033[42;37m Success \033[0m"
+	else
+		echo -e "Restart service gmetad status: \033[41;37m Failed \033[0m"
+	fi
+	restart_and_enable_gmond_service=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo systemctl restart gmond.service && sudo systemctl enable gmond.service"`
+	if [[ $? -eq 0 ]];then
+		echo -e "Restart service gmond status: \033[42;37m Success \033[0m"
+	else
+		echo -e "Restart service gmond status: \033[41;37m Failed \033[0m"
+	fi
+	echo "-----------------------------------"
+	echo "Now working on Slaves."
+	for slave_ip in ${slave_ip_array[@]}
+    do
+    	if [ ! -n "$1" ];then
+	    	scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r ganglia_rpms $user@$slave_ip:~`
+			install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo rpm -Uvh --force ~/ganglia_rpms/slave/*.rpm"`
+		fi
+		echo "Backing up configuration files."
+		test_backup_files=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo test -f /etc/ganglia/gmond.conf.bak"`
+		if [[ $? -eq 0 ]];then
+			init_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo cp /etc/ganglia/gmond.conf.bak /etc/ganglia/gmond.conf"`
+		fi
+		backup_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo cp /etc/ganglia/gmond.conf /etc/ganglia/gmond.conf.bak"`
+		echo "Changing configurations in (/etc/ganglia/gmond.conf)."
+		replace_settings_in_gmond_dot_conf1=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  name = \"unspecified\"/  name = \"$cluster_name\"/g' /etc/ganglia/gmond.conf"`
+		replace_settings_in_gmond_dot_conf2=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  mcast_join = 239.2.11.71/  #mcast_join = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
+		replace_settings_in_gmond_dot_conf3=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  bind = 239.2.11.71/  #bind = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
+		replace_settings_in_gmond_dot_conf4=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  retry_bind = true/  #retry_bind = true/g' /etc/ganglia/gmond.conf"`
+		get_master_ip_settings_in_gmond_dot_conf=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo grep -i \"  host = \" /etc/ganglia/gmond.conf"`
+		if [ -n $get_master_ip_settings_in_gmond_dot_conf ]
+		then
+			replace_settings_in_gmond_dot_conf5=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i '/udp_send_channel {/a\  host = $master_hostname' /etc/ganglia/gmond.conf"`
+		fi		
+		echo "Starting & enabling services (gmond)."
+		restart_and_enable_gmond_service=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo systemctl restart gmond.service && sudo systemctl enable gmond.service"`
+		if [[ $? -eq 0 ]];then
+			echo -e "Restart service gmond status: \033[42;37m Success \033[0m"
+		else
+			echo -e "Restart service gmond status: \033[41;37m Failed \033[0m"
+		fi
+	done
+	echo "All done!"
 }
 
 case "$1" in
@@ -136,8 +234,14 @@ case "$1" in
     reconfigure)
         reconfigure_yarn
     ;;
+    install-ganglia)
+    	install_ganglia
+    ;;
+    restart-ganglia)
+    	install_ganglia "without-install-RPMs"
+    ;;
 *)
-    echo "Usage: bash cluster-yarn.sh {start|stop|restart|reconfigure}"
+    echo "Usage: bash cluster-yarn.sh {start|stop|restart|reconfigure|install-ganglia|restart-ganglia}"
     exit 1
     ;;
 esac
