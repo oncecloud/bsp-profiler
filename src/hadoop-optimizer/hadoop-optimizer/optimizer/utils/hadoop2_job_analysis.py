@@ -56,6 +56,7 @@ class Hadoop2JobAnalysis(object):
         self.map_tasks_analysis()
         self.reduce_task_analysis()
         self.cluster_analysis(int(yarn_cluster_workers_number), int(round(float(yarn_max_memory_mb)/1024)), int(yarn_max_cpu), int(round(float(yarn_container_memory_mb)/1024)), int(yarn_container_cpu), int(compute_node_max_memory_gb), int(compute_node_max_cpu_core))
+        self.total_container = int(yarn_cluster_workers_number) * int(round(float(yarn_max_memory_mb)/1024)) / int(round(float(yarn_container_memory_mb)/1024))
         self.timeline_analysis(int(yarn_cluster_workers_number))
     
     def to_dict(self):
@@ -226,6 +227,8 @@ class Hadoop2JobAnalysis(object):
         self.job_resource_usage_metrics['mapAverageCpuUsage'] = '%.6f' % (float(map_cpu_time_usage_total) / map_attempt_run_time_total)
         self.job_resource_usage_metrics['mapAveragePhysicalMemoryUsageMb'] = '%.6f' % (float(map_physical_memory_usage_total) / 1024 / 1024 / map_attempt_count)
         self.job_resource_usage_metrics['mapAverageVirtualMemoryUsageMb'] = '%.6f' % (float(map_virtual_memory_usage_total) / 1024 / 1024 / map_attempt_count)
+        self.job_resource_usage_metrics['mapInputMbTotal'] = '%.2f' % (float(map_attempt_input_bytes_total) / 1024 / 1024)
+        self.job_resource_usage_metrics['mapOutputMbTotal'] = '%.2f' % (float(map_attempt_output_bytes_total) / 1024 / 1024)
         self.job_resource_usage_metrics['mapInputAverageIoRateMbPerSec'] = '%.6f' % (float(map_attempt_input_bytes_total) / 1024 / 1024 / map_attempt_run_time_total)
         self.job_resource_usage_metrics['mapOutputAverageIoRateMbPerSec'] = '%.6f' % (float(map_attempt_output_bytes_total) / 1204 / 1024 / map_attempt_run_time_total)
         self.map_elapsed_average = '%.2f' % (float(map_elapsed_total) / self.total_maps)
@@ -327,6 +330,8 @@ class Hadoop2JobAnalysis(object):
         self.job_resource_usage_metrics['reduceAverageCpuUsage'] = '%.6f' % (float(reduce_cpu_time_usage_total) / reduce_attempt_run_time_total)
         self.job_resource_usage_metrics['reduceAveragePhysicalMemoryUsageMb'] = '%.6f' % (float(reduce_physical_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
         self.job_resource_usage_metrics['reduceAverageVirtualMemoryUsageMb'] = '%.6f' % (float(reduce_virtual_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
+        self.job_resource_usage_metrics['reduceInputMbTotal'] = '%.2f' % (float(reduce_attempt_input_bytes_total) / 1024 / 1024)
+        self.job_resource_usage_metrics['reduceOutputMbTotal'] = '%.2f' % (float(reduce_attempt_output_bytes_total) / 1024 / 1024)
         self.job_resource_usage_metrics['reduceInputAverageIoRateMbPerSec'] = '%.6f' % (float(reduce_attempt_input_bytes_total) / 1024 / 1024 / reduce_attempt_run_time_total)
         self.job_resource_usage_metrics['reduceOutputAverageIoRateMbPerSec'] = '%.6f' % (float(reduce_attempt_output_bytes_total) / 1024 / 1024 / reduce_attempt_run_time_total)
         self.reduce_elapsed_average = '%.2f' % (float(reduce_elapsed_total) / self.total_reduces)
@@ -399,7 +404,6 @@ class Hadoop2JobAnalysis(object):
         
     def timeline_analysis(self, yarn_cluster_workers_number):
         job_progress_percentile_timestamp_array = self._job_progress_percentile_timestamp()
-        
         for i in xrange(0, yarn_cluster_workers_number):
             self.successful_attempt_topology.append([])
         sorted_timeline = sorted(self.successful_attempt_timeline, key=operator.itemgetter('startTime'))
