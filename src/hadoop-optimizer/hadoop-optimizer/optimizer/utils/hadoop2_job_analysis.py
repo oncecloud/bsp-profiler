@@ -234,6 +234,16 @@ class Hadoop2JobAnalysis(object):
         self.map_elapsed_average = '%.2f' % (float(map_elapsed_total) / self.total_maps)
             
     def reduce_task_analysis(self):
+        if self.total_reduces == 0:
+            self.job_resource_usage_metrics['reduceAttemptAverageRuntime'] = 0
+            self.job_resource_usage_metrics['reduceAverageCpuUsage'] = 0
+            self.job_resource_usage_metrics['reduceAveragePhysicalMemoryUsageMb'] = 0
+            self.job_resource_usage_metrics['reduceAverageVirtualMemoryUsageMb'] = 0
+            self.job_resource_usage_metrics['reduceInputMbTotal'] = 0
+            self.job_resource_usage_metrics['reduceOutputMbTotal'] = 0
+            self.job_resource_usage_metrics['reduceInputAverageIoRateMbPerSec'] = 0
+            self.job_resource_usage_metrics['reduceOutputAverageIoRateMbPerSec'] = 0
+            return
         total_reduces = self.hadoop2_job_stats.get('totalReduces')
         reduce_tasks = self.hadoop2_job_stats.get('reduceTasks')
         set_value_once = [0]
