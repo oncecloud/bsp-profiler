@@ -3,6 +3,9 @@ CURDIR=$(cd $(dirname ${BASH_SOURCE[0]}); pwd)
 cd $CURDIR
 rm -rf build hadoop_optimizer.egg-info
 cp -rf ./scripts /home/optimizer
+cp -rf ./rpms /home/optimizer
+tar -zxvf /home/optimizer/rpms/*.tar.gz -C /home/optimizer/rpms
+cd $CURDIR
 python setup.py sdist
 pip uninstall -y hadoop_optimizer
 pip install --force-reinstall dist/*.tar.gz

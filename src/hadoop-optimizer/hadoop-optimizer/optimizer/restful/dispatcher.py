@@ -17,3 +17,5 @@ restful_api.add_resource(Scale, '/v1.0/sahara-cluster/<string:cluster_name>/scal
 restful_api.add_resource(CreateClusterTemplate, '/v1.0/sahara-cluster/template/create')
 restful_api.add_resource(CreateCluster, '/v1.0/sahara-cluster/create')
 restful_api.add_resource(Submit, '/v1.0/sahara-cluster/<string:cluster_name>/job/submit')
+restful_api.add_resource(InstallGanglia, '/v1.0/sahara-cluster/<string:cluster_name>/ganglia/install')
+restful_api.add_resource(RestartGanglia, '/v1.0/sahara-cluster/<string:cluster_name>/ganglia/restart')

@@ -10,6 +10,8 @@ import re
 import operator
 from pip._vendor import progress
 
+MAXIMIUM_CONTAINER_IN_WORKER = 12
+
 class Hadoop2JobAnalysis(object):
     
     def __init__(self, hadoop2_job_stats_dict, yarn_cluster_workers_number=7, yarn_max_memory_mb=5120, yarn_max_cpu=5, yarn_container_memory_mb=1024, yarn_container_cpu=1, compute_node_max_memory_gb=65536, compute_node_max_cpu_core=24):
@@ -56,19 +58,19 @@ class Hadoop2JobAnalysis(object):
         self.map_tasks_analysis()
         self.reduce_task_analysis()
         self.cluster_analysis(int(yarn_cluster_workers_number), int(round(float(yarn_max_memory_mb)/1024)), int(yarn_max_cpu), int(round(float(yarn_container_memory_mb)/1024)), int(yarn_container_cpu), int(compute_node_max_memory_gb), int(compute_node_max_cpu_core))
-        self.total_container = int(yarn_cluster_workers_number) * int(round(float(yarn_max_memory_mb)/1024)) / int(round(float(yarn_container_memory_mb)/1024))
+        self.max_container_in_worker = int(round(float(yarn_max_memory_mb)/1024)) / int(round(float(yarn_container_memory_mb)/1024))
         self.timeline_analysis(int(yarn_cluster_workers_number))
     
     def to_dict(self):
         retv = {
             "jobID" : self.job_id,
-            "jobSubmitTime" : self.job_submit_time,
-            "jobLaunchTime" : self.job_launch_time,
-            "jobFinishTime" : self.job_finish_time,
+#             "jobSubmitTime" : self.job_submit_time,
+#             "jobLaunchTime" : self.job_launch_time,
+#             "jobFinishTime" : self.job_finish_time,
             "jobRuntime" : self.job_run_time,
             "jobElapsed" : self.job_elapsed,
             "jobResourceUsageMetrics" : self.job_resource_usage_metrics,
-#             "jobDataSkew" : self.job_data_skew,
+            "jobDataSkew" : self.job_data_skew,
             "totalMaps" : self.total_maps,
             "totalReduces" : self.total_reduces,
 #             "mapContainFinalFailed" : self.map_contain_final_failed,
@@ -79,7 +81,7 @@ class Hadoop2JobAnalysis(object):
 #             "mapElapsedMaximumContainAttemptFailed" : self.map_elapsed_maximum_contain_attempt_failed,
 #             "mapAttemptSpilledMinusMapOutputMinusReduceOutputMaximum" : self.map_attempt_spilled_minus_mapoutput_minus_reduceoutput_maximum,
 #             "mapAttemptSpilledMinusMapOutputMinusReduceOutputMinimum" : self.map_attempt_spilled_minus_mapoutput_minus_reduceoutput_minimum,
-            "successfulMapAttemptCDFs" : self.successful_map_attempt_CDFs,
+#             "successfulMapAttemptCDFs" : self.successful_map_attempt_CDFs,
 #             "failedMapAttemptCDFs" : self.failed_map_attempt_CDFs,
 #             "failedMapAttemptTotalTime" : self.failed_map_attempt_total_time,
 #             "failedMapAttemptCount" : self.failed_map_attempt_count,
@@ -89,7 +91,7 @@ class Hadoop2JobAnalysis(object):
 #             "reduceElapsedMinimum" : self.reduce_elapsed_minimum,
 #             "reduceElapsedAverage" : self.reduce_elapsed_average,
 #             "reduceElapsedMaximumContainAttemptFailed" : self.reduce_elapsed_maximum_contain_attempt_failed,
-            "successfulReduceAttemptCDFs" : self.successful_reduce_attempt_CDFs,
+#             "successfulReduceAttemptCDFs" : self.successful_reduce_attempt_CDFs,
 #             "failedReduceAttemptCDFs" : self.failed_reduce_attempt_CDFs,
 #             "failedReduceAttemptTotalTime" : self.failed_reduce_attempt_total_time,
 #             "failedReduceAttemptCount" : self.failed_reduce_attempt_count,
@@ -358,7 +360,34 @@ class Hadoop2JobAnalysis(object):
         map_loops = map_division_result if map_modulo_result == 0 else map_division_result + 1 
         reduce_loops = reduce_division_result if reduce_modulo_result == 0 else reduce_division_result + 1
         bigger_loops = max(map_loops, reduce_loops)
-        if bigger_loops > 1: 
+        map_input_data_estimate = len(str(self.job_resource_usage_metrics['mapInputMbTotal']))
+        map_output_data_estimate = len(str(self.job_resource_usage_metrics['mapOutputMbTotal']))
+        reduce_input_data_estimate = len(str(self.job_resource_usage_metrics['reduceInputMbTotal']))
+        reduce_output_data_estimate = len(str(self.job_resource_usage_metrics['reduceOutputMbTotal']))
+        if map_input_data_estimate >= 4:
+            map_type = "data_intensive"
+        else:
+            map_type = "normal"
+        if reduce_input_data_estimate >=4:
+            reduce_type = "data_intensive"
+        else:
+            reduce_type = "normal"
+        if self.total_reduces == 0:
+            no_reduce_tasks = True
+        else:
+            no_reduce_tasks = False
+        if no_reduce_tasks:
+            maximium_container_in_a_worker = compute_node_max_memory_gb - 8
+        else:
+            maximium_container_in_a_worker = MAXIMIUM_CONTAINER_IN_WORKER
+        container_configure_recommended = [1024,1]
+        container_configure_memory_mb_and_cpu_count_predefine_list = [[512,1], [1024,1], [1536,2], [2048,2]]
+        for container_configure_predefine in container_configure_memory_mb_and_cpu_count_predefine_list:
+            if cmp(round(float(self.job_resource_usage_metrics.get('mapAveragePhysicalMemoryUsageMb'))), container_configure_predefine[0]) <= 0 and \
+            cmp(round(float(self.job_resource_usage_metrics.get('reduceAveragePhysicalMemoryUsageMb'))), container_configure_predefine[0]) <= 0:
+                container_configure_recommended = container_configure_predefine
+                break
+        if bigger_loops >= 3: 
             for decrease_N_loops in range(1, bigger_loops, 1):
                 decrease_loops_of_map = decrease_N_loops if cmp(map_loops-1, decrease_N_loops) >= 0 else map_loops-1
                 decrease_loops_of_reduce = decrease_N_loops if cmp(reduce_loops-1, decrease_N_loops) >=0 else reduce_loops-1
@@ -377,11 +406,12 @@ class Hadoop2JobAnalysis(object):
                                                  }
                 scale_up_container_per_worker = containers_demands_for_current_loops / yarn_cluster_workers_number \
                 if containers_demands_for_current_loops % yarn_cluster_workers_number == 0 else containers_demands_for_current_loops / yarn_cluster_workers_number + 1
-                scale_up_for_decrease_N_loop = {"workers" : yarn_cluster_workers_number,
-                                                "cpuCore" : yarn_container_cpu * scale_up_container_per_worker, 
-                                                "memoryGb" : yarn_container_memory_gb * scale_up_container_per_worker,
-                                                "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_up_container_per_worker - max_container_per_worker) * yarn_cluster_workers_number) / (float(total_time_opt) / 1000) ),
-                                                }
+                if cmp(scale_up_container_per_worker, maximium_container_in_a_worker) <= 0:
+                    scale_up_for_decrease_N_loop = {"workers" : yarn_cluster_workers_number,
+                                                    "cpuCore" : yarn_container_cpu * scale_up_container_per_worker, 
+                                                    "memoryGb" : yarn_container_memory_gb * scale_up_container_per_worker,
+                                                    "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_up_container_per_worker - max_container_per_worker) * yarn_cluster_workers_number) / (float(total_time_opt) / 1000) ),
+                                                    }
                 details_for_decrease_N_loops = {"mapLoopsAfterOpt" : map_loops - decrease_loops_of_map,
                                                 "reduceLoopsAfterOpt" : reduce_loops - decrease_loops_of_reduce,
                                                 "decreaseLoopsOfMap" : decrease_loops_of_map,
@@ -418,7 +448,10 @@ class Hadoop2JobAnalysis(object):
             self.successful_attempt_topology.append([])
         sorted_timeline = sorted(self.successful_attempt_timeline, key=operator.itemgetter('startTime'))
         for timeline in sorted_timeline:
-            self.successful_attempt_topology[int(timeline.get('hostName'))-1].append([timeline.get('attemptID') , timeline.get('startTime'), timeline.get('finishTime'), timeline.get('finishTime') - timeline.get('startTime')])
+            if len(self.successful_attempt_topology) <= int(timeline.get('hostName')):
+                for i in xrange(len(self.successful_attempt_topology) - 1, int(timeline.get('hostName'))):
+                    self.successful_attempt_topology.append([])
+            self.successful_attempt_topology[int(timeline.get('hostName'))].append([timeline.get('attemptID') , timeline.get('startTime'), timeline.get('finishTime'), timeline.get('finishTime') - timeline.get('startTime')])
         for host in self.successful_attempt_topology:
             job_progress_percentile_parallelism = self._job_progress_percentile_parallelism_init()
             for attempt_details in host:
@@ -432,6 +465,10 @@ class Hadoop2JobAnalysis(object):
                         job_progress_percentile_parallelism[job_progress_percentile_timestamp_array.index(progress)] += 1
                     if cmp(attempt_details[1], progress[0]) >= 0 and cmp(attempt_details[2], progress[0]) >= 0 and cmp(attempt_details[2], progress[1]) <= 0:
                         job_progress_percentile_parallelism[job_progress_percentile_timestamp_array.index(progress)] += 1
+                    if cmp(job_progress_percentile_parallelism[job_progress_percentile_timestamp_array.index(progress)], self.max_container_in_worker) > 0:
+                        job_progress_percentile_parallelism[job_progress_percentile_timestamp_array.index(progress)] = self.max_container_in_worker
+                    if cmp(job_progress_percentile_parallelism[job_progress_percentile_timestamp_array.index(progress)], len(host)) > 0:
+                        job_progress_percentile_parallelism[job_progress_percentile_timestamp_array.index(progress)] = len(host)
             self.job_data_skew.append([len(host), job_progress_percentile_parallelism])
         return sorted_timeline
 
@@ -931,9 +968,9 @@ class Hadoop2JobAnalysis(object):
 
 if __name__ == '__main__':
     from hadoop2_job_stats import Hadoop2JobStats
-    jhist1 = json.load(file("/Users/frank/Working/Projects/lenovo/TeraSort_cpu_pin_test/TS_14G14U_5_in_diff_machines_pin_1.json"))
+    jhist1 = json.load(file("/Users/frank/Downloads/job_1496242028814_0038-trace.json"))
     j1 = Hadoop2JobStats(jhist1)
-    a1 = Hadoop2JobAnalysis(j1.to_dict(), 5, 14*1024, 14)
+    a1 = Hadoop2JobAnalysis(j1.to_dict(), 2, 4*1024, 4)
 #     print "===============Hadoop cluster: 10 workers(8G/8U)================"
     pprint.pprint(a1.to_dict())
 #     pprint.pprint(a1.get_successful_attempt_timeline())
@@ -941,9 +978,9 @@ if __name__ == '__main__':
 #     pprint.pprint(a1.get_successful_reduce_attempt_cdfs())
     print "\n"
     
-    jhist2 = json.load(file("/Users/frank/Working/Projects/lenovo/TeraSort_cpu_pin_test/TS_14G14U_5_in_3machines_pin_1.json"))
-    j2 = Hadoop2JobStats(jhist2)
-    a2 = Hadoop2JobAnalysis(j2.to_dict(), 5, 14*1024, 14)
+#     jhist2 = json.load(file("/Users/frank/Working/Projects/lenovo/TeraSort_cpu_pin_test/TS_14G14U_5_in_3machines_pin_1.json"))
+#     j2 = Hadoop2JobStats(jhist2)
+#     a2 = Hadoop2JobAnalysis(j2.to_dict(), 5, 14*1024, 14)
 #     print "===============Hadoop cluster: 10 workers(4G/8U)================"
 #     print "Job elapsed: %s seconds" % (a2.get_job_elapsed() / 1000)
 #     print a2.get_map_attempt_start_time_array()
@@ -955,10 +992,10 @@ if __name__ == '__main__':
 #     sorted_reduce_attempt_finish_time_array = sorted(a2.get_reduce_attempt_finish_time_array())
 #     pprint.pprint(sorted_reduce_attempt_start_time_array[-1] - sorted_reduce_attempt_start_time_array[0])
 #     pprint.pprint(sorted_reduce_attempt_finish_time_array[-1] - sorted_reduce_attempt_finish_time_array[0])
-    pprint.pprint(a2.to_dict())
+#     pprint.pprint(a2.to_dict())
 #     pprint.pprint(a2.get_successful_map_attempt_cdfs())
 #     pprint.pprint(a2.get_successful_reduce_attempt_cdfs())
-    print "\n"
+#     print "\n"
      
 #     jhist3 = json.load(file("/Users/frank/Downloads/TS_15G15U_9_1-trace-after-opt.json"))
 #     j3 = Hadoop2JobStats(jhist3)

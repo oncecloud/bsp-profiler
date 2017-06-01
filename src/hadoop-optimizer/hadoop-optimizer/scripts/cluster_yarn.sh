@@ -129,8 +129,20 @@ install_ganglia()
 		echo "Restarting ganglia services in cluster $cluster_name."
 	else
 		echo "Installing ganglia services in cluster $cluster_name."
-		scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r ganglia_rpms $user@$master_ip:~`
-		install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo rpm -Uvh --force ~/ganglia_rpms/master/*.rpm"`
+		scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r $ganglia_rpms $user@$master_ip:~`
+		if [[ $? -eq 0 ]];then
+			echo -e "Scp rpms to Master status: \033[42;37m Success \033[0m"
+		else
+			echo -e "Scp rpms to Master status: \033[41;37m Failed \033[0m"
+			exit 1
+		fi
+		install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo rpm -Uvh --force ~/ganglia-rpms/master/*.rpm"`
+		if [[ $? -eq 0 ]];then
+			echo -e "Install rpms on Master status: \033[42;37m Success \033[0m"
+		else
+			echo -e "Install rpms on Master status: \033[41;37m Failed \033[0m"
+			exit 1
+		fi
 	fi
 	echo "Now working on Master."
 	echo "Changing authorization of (web, rrd, dwoo) directories."
@@ -191,8 +203,20 @@ install_ganglia()
 	for slave_ip in ${slave_ip_array[@]}
     do
     	if [ ! -n "$1" ];then
-	    	scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r ganglia_rpms $user@$slave_ip:~`
-			install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo rpm -Uvh --force ~/ganglia_rpms/slave/*.rpm"`
+	    	scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r $ganglia_rpms $user@$slave_ip:~`
+			if [[ $? -eq 0 ]];then
+				echo -e "Scp rpms to Slave status: \033[42;37m Success \033[0m"
+			else
+				echo -e "Scp rpms to Slave status: \033[41;37m Failed \033[0m"
+				exit 1
+			fi
+			install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo rpm -Uvh --force ~/ganglia-rpms/slave/*.rpm"`
+			if [[ $? -eq 0 ]];then
+				echo -e "Install rpms on Slave status: \033[42;37m Success \033[0m"
+			else
+				echo -e "Install rpms on Slave status: \033[41;37m Failed \033[0m"
+				exit 1
+			fi
 		fi
 		echo "Backing up configuration files."
 		test_backup_files=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo test -f /etc/ganglia/gmond.conf.bak"`

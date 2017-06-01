@@ -39,6 +39,8 @@ __all__ = [
         'CreateClusterTemplate',
         "CreateCluster",
         "Submit",
+        "InstallGanglia",
+        "RestartGanglia",
            ]
             
 class Prepare(Resource):
@@ -367,6 +369,72 @@ class Submit(Resource):
                            % (sshKeyPath, masterIP, base_jar_dir, base_jar_dir))
             output = shell.call("ssh -i %s centos@%s \"sudo su - -c \'%s\' hadoop\"" \
                                     %(sshKeyPath, masterIP, submit_job_on_hadoop_cmd(jar_name, jar_class, jar_params))).strip()
+            return output_json(output, 200)
+        except Exception:
+            log.exception(traceback.format_exc())
+            abort(400, message="Request failed")
+            
+class InstallGanglia(Resource):
+
+    def __init__(self):
+        self.scriptName = ""
+
+    def post(self, cluster_name):
+        try:
+            project_name = request.args.get('project', "admin")
+            json_data = request.get_json(force=True)
+            json_str = json.dumps(json_data)
+            dict_data = JSONDecoder().decode(json_str)
+            masterIP = shell.call(get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name)).strip()
+            sshKeyPath = dict_data.get('sshKeyPath')
+            rpms_dir = dict_data.get('rpmsDir', '/home/optimizer/rpms/ganglia-rpms')
+            if not masterIP or not sshKeyPath:
+                abort(400, message="bad parameter in request body")
+            else:
+                project_name = request.args.get('project', "admin")
+                slaveIPArray = shell.call(get_sahara_cluster_s_slavesIP_cmd(project_name, cluster_name)).strip()
+                slaveIPArrayStr = str(slaveIPArray).replace("\n", " ")
+                script_setting_str = "master_ip=%s\nslave_ip_array=(%s)\ncluster_name=%s\nuser=centos\nssh_key=\\\"%s\\\"\nganglia_rpms=\\\"%s\\\"\n" \
+                                    % (masterIP, slaveIPArrayStr, cluster_name, sshKeyPath, rpms_dir)
+                work_path = "/home/optimizer/%s" % cluster_name
+                if not os.path.exists(work_path):
+                    os.makedirs(work_path)
+                shell.call("echo \"%s\" > %s/cluster_yarn.conf" % (script_setting_str, work_path))
+                shell.call("/usr/bin/cp -f /home/optimizer/scripts/cluster_yarn.sh %s" % (work_path))
+                output = shell.call("/usr/bin/bash cluster_yarn.sh install-ganglia", workdir=work_path)
+            return output_json(output, 200)
+        except Exception:
+            log.exception(traceback.format_exc())
+            abort(400, message="Request failed")
+
+class RestartGanglia(Resource):
+
+    def __init__(self):
+        self.scriptName = ""
+
+    def post(self, cluster_name):
+        try:
+            project_name = request.args.get('project', "admin")
+            json_data = request.get_json(force=True)
+            json_str = json.dumps(json_data)
+            dict_data = JSONDecoder().decode(json_str)
+            masterIP = shell.call(get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name)).strip()
+            sshKeyPath = dict_data.get('sshKeyPath')
+            rpms_dir = dict_data.get('rpmsDir', '/home/optimizer/rpms/ganglia-rpms')
+            if not masterIP or not sshKeyPath:
+                abort(400, message="bad parameter in request body")
+            else:
+                project_name = request.args.get('project', "admin")
+                slaveIPArray = shell.call(get_sahara_cluster_s_slavesIP_cmd(project_name, cluster_name)).strip()
+                slaveIPArrayStr = str(slaveIPArray).replace("\n", " ")
+                script_setting_str = "master_ip=%s\nslave_ip_array=(%s)\ncluster_name=%s\nuser=centos\nssh_key=\\\"%s\\\"\nganglia_rpms=\\\"%s\\\"\n" \
+                                    % (masterIP, slaveIPArrayStr, cluster_name, sshKeyPath, rpms_dir)
+                work_path = "/home/optimizer/%s" % cluster_name
+                if not os.path.exists(work_path):
+                    os.makedirs(work_path)
+                shell.call("echo \"%s\" > %s/cluster_yarn.conf" % (script_setting_str, work_path))
+                shell.call("/usr/bin/cp -f /home/optimizer/scripts/cluster_yarn.sh %s" % (work_path))
+                output = shell.call("/usr/bin/bash cluster_yarn.sh restart-ganglia", workdir=work_path)
             return output_json(output, 200)
         except Exception:
             log.exception(traceback.format_exc())
