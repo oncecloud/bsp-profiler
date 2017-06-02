@@ -14,7 +14,7 @@ MAXIMIUM_CONTAINER_IN_WORKER = 12
 
 class Hadoop2JobAnalysis(object):
     
-    def __init__(self, hadoop2_job_stats_dict, yarn_cluster_workers_number=7, yarn_max_memory_mb=5120, yarn_max_cpu=5, yarn_container_memory_mb=1024, yarn_container_cpu=1, compute_node_max_memory_gb=65536, compute_node_max_cpu_core=24):
+    def __init__(self, hadoop2_job_stats_dict, yarn_cluster_workers_number=6, actual_workers=6, yarn_max_memory_mb=5120, yarn_max_cpu=5, yarn_container_memory_mb=1024, yarn_container_cpu=1, compute_node_max_memory_gb=65536, compute_node_max_cpu_core=24, compute_node_num=6):
         self.hadoop2_job_stats = hadoop2_job_stats_dict
         self.job_id = self.hadoop2_job_stats.get('jobID')
         self.job_submit_time = self.hadoop2_job_stats.get('submitTime')
@@ -57,9 +57,9 @@ class Hadoop2JobAnalysis(object):
         self.cluster_advise = {}
         self.map_tasks_analysis()
         self.reduce_task_analysis()
-        self.cluster_analysis(int(yarn_cluster_workers_number), int(round(float(yarn_max_memory_mb)/1024)), int(yarn_max_cpu), int(round(float(yarn_container_memory_mb)/1024)), int(yarn_container_cpu), int(compute_node_max_memory_gb), int(compute_node_max_cpu_core))
         self.max_container_in_worker = int(round(float(yarn_max_memory_mb)/1024)) / int(round(float(yarn_container_memory_mb)/1024))
-        self.timeline_analysis(int(yarn_cluster_workers_number))
+        self.timeline_analysis(int(yarn_cluster_workers_number), actual_workers)
+        self.cluster_analysis(int(yarn_cluster_workers_number), int(round(float(yarn_max_memory_mb)/1024)), int(yarn_max_cpu), int(round(float(yarn_container_memory_mb)/1024)), int(yarn_container_cpu), int(compute_node_max_memory_gb), int(compute_node_max_cpu_core), int(compute_node_num))
     
     def to_dict(self):
         retv = {
@@ -348,9 +348,19 @@ class Hadoop2JobAnalysis(object):
         self.job_resource_usage_metrics['reduceOutputAverageIoRateMbPerSec'] = '%.6f' % (float(reduce_attempt_output_bytes_total) / 1024 / 1024 / reduce_attempt_run_time_total)
         self.reduce_elapsed_average = '%.2f' % (float(reduce_elapsed_total) / self.total_reduces)
 
-    def cluster_analysis(self, yarn_cluster_workers_number, yarn_max_memory_gb, yarn_max_cpu, yarn_container_memory_gb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core):
+    def cluster_analysis(self, yarn_cluster_workers_number, yarn_max_memory_gb, yarn_max_cpu, yarn_container_memory_gb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core, compute_node_num):
         scale_prediction = []
         advise = ""
+        actual_max_parallelism_in_one_worker = 0
+        has_idle_worker=False
+        for worker in self.job_data_skew:
+            tmp_value = sorted(worker[1], reverse=True)[0]
+            if tmp_value == 0:
+                has_idle_worker = True
+            if tmp_value > actual_max_parallelism_in_one_worker:
+                actual_max_parallelism_in_one_worker = tmp_value
+        print actual_max_parallelism_in_one_worker
+        print has_idle_worker
         container_configure_recommended = [1024,1]
         container_configure_memory_mb_and_cpu_count_predefine_list = [[512,1], [1024,1], [1536,2], [2048,2]]
         for container_configure_predefine in container_configure_memory_mb_and_cpu_count_predefine_list:
@@ -358,9 +368,9 @@ class Hadoop2JobAnalysis(object):
             cmp(round(float(self.job_resource_usage_metrics.get('reduceAveragePhysicalMemoryUsageMb'))), container_configure_predefine[0]) <= 0:
                 container_configure_recommended = container_configure_predefine
                 break
+        container_recommended_configure_to_current_configure_memory_ratio = float(container_configure_recommended[0]) / (yarn_container_memory_gb * 1024)
 #         max_container_per_worker = min(yarn_max_memory_gb / yarn_container_memory_gb, yarn_max_cpu / yarn_container_cpu)
         max_container_per_worker = int(round(yarn_max_memory_gb * 1024 / container_configure_recommended[0]))
-        print max_container_per_worker
         total_container_all_workers = int(max_container_per_worker * yarn_cluster_workers_number)
         map_modulo_result = self.total_maps % total_container_all_workers
         map_division_result = self.total_maps / total_container_all_workers
@@ -389,36 +399,36 @@ class Hadoop2JobAnalysis(object):
             maximium_container_in_a_worker = compute_node_max_memory_gb - 8
         else:
             maximium_container_in_a_worker = MAXIMIUM_CONTAINER_IN_WORKER
-        if bigger_loops >= 3: 
+        if bigger_loops >= 4: 
             for decrease_N_loops in range(1, bigger_loops, 1):
                 decrease_loops_of_map = decrease_N_loops if cmp(map_loops-1, decrease_N_loops) >= 0 else map_loops-1
                 decrease_loops_of_reduce = decrease_N_loops if cmp(reduce_loops-1, decrease_N_loops) >=0 else reduce_loops-1
-                print decrease_loops_of_map
-                print decrease_loops_of_reduce
                 loops_after_opt = max(map_loops - decrease_loops_of_map, reduce_loops - decrease_loops_of_reduce)
-                time_opt_of_decrease_loops_of_map = float(self.job_resource_usage_metrics.get('mapAttemptAverageRuntime')) * decrease_loops_of_map
-                time_opt_of_decrease_loops_of_reduce = float(self.job_resource_usage_metrics.get('reduceAttemptAverageRuntime')) * decrease_loops_of_reduce
+                time_opt_of_decrease_loops_of_map = float(self.job_resource_usage_metrics.get('mapAttemptAverageRuntime')) * decrease_loops_of_map / container_recommended_configure_to_current_configure_memory_ratio
+                time_opt_of_decrease_loops_of_reduce = float(self.job_resource_usage_metrics.get('reduceAttemptAverageRuntime')) * decrease_loops_of_reduce / container_recommended_configure_to_current_configure_memory_ratio
                 containers_demands_for_current_loops = self.total_maps / loops_after_opt + self.total_maps % loops_after_opt \
                 if map_loops > reduce_loops else self.total_reduces / loops_after_opt + self.total_reduces % loops_after_opt
                 total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
-                print total_time_opt
                 scale_out_workers = containers_demands_for_current_loops / max_container_per_worker \
                 if containers_demands_for_current_loops % max_container_per_worker == 0 else containers_demands_for_current_loops / max_container_per_worker + 1
-                scale_out_for_decrease_N_loop = {"workers" : scale_out_workers,
-                                                 "containerCpuCore" : container_configure_recommended[1],
-                                                 "containerMemoryMb" : container_configure_recommended[0],
-                                                 "yarnCpuCore" : yarn_max_cpu,
-                                                 "yarnMemoryMb" : yarn_max_memory_gb * 1024,
-                                                 "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_out_workers - yarn_cluster_workers_number) * max_container_per_worker) / (float(total_time_opt) / 1000)),
-                                                 }
+                scale_out_for_decrease_N_loop = {}
+                if cmp(scale_out_workers, compute_node_num) <= 0:
+                    scale_out_for_decrease_N_loop = {"workers" : scale_out_workers,
+                                                     "containerCpuCore" : container_configure_recommended[1],
+                                                     "containerMemoryMb" : container_configure_recommended[0],
+                                                     "yarnCpuCore" : yarn_max_cpu,
+                                                     "yarnMemoryMb" : yarn_max_memory_gb * 1024,
+                                                     "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_out_workers - yarn_cluster_workers_number) * max_container_per_worker) / (float(total_time_opt) / 1000)),
+                                                     }
                 scale_up_container_per_worker = containers_demands_for_current_loops / yarn_cluster_workers_number \
                 if containers_demands_for_current_loops % yarn_cluster_workers_number == 0 else containers_demands_for_current_loops / yarn_cluster_workers_number + 1
+                scale_up_for_decrease_N_loop = {}
                 if cmp(scale_up_container_per_worker, maximium_container_in_a_worker) <= 0:
                     scale_up_for_decrease_N_loop = {"workers" : yarn_cluster_workers_number,
                                                     "containerCpuCore" : container_configure_recommended[1],
                                                     "containerMemoryMb" : container_configure_recommended[0],
-                                                    "yarnCpuCore" : yarn_container_cpu * scale_up_container_per_worker, 
-                                                    "yarnMemoryMb" : yarn_container_memory_gb * 1024 * scale_up_container_per_worker,
+                                                    "yarnCpuCore" : container_configure_recommended[1] * scale_up_container_per_worker, 
+                                                    "yarnMemoryMb" : container_configure_recommended[0] * scale_up_container_per_worker,
                                                     "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_up_container_per_worker - max_container_per_worker) * yarn_cluster_workers_number) / (float(total_time_opt) / 1000) ),
                                                     }
                 details_for_decrease_N_loops = {"mapLoopsAfterOpt" : map_loops - decrease_loops_of_map,
@@ -428,7 +438,7 @@ class Hadoop2JobAnalysis(object):
                                                 "timeOptimizationOfDecreaseLoopsOfMap" : time_opt_of_decrease_loops_of_map,
                                                 "timeOptimizationOfDecreaseLoopsOfReduce" : time_opt_of_decrease_loops_of_reduce,
                                                 "timeOptimizationTotal" : total_time_opt,
-                                                "jobElapsedAfterOpt" : self.job_elapsed - total_time_opt,
+                                                "jobElapsedAfterOpt" : (self.job_elapsed - total_time_opt) * container_recommended_configure_to_current_configure_memory_ratio,
                                                 "scaleUpForDecreaseLoops" : scale_up_for_decrease_N_loop,
                                                 "scaleOutForDecreaseLoops" : scale_out_for_decrease_N_loop}
                 scale_prediction.append(details_for_decrease_N_loops)
@@ -451,9 +461,9 @@ class Hadoop2JobAnalysis(object):
         self.cluster_advise['advise'] = advise
         self.cluster_advise['scalePrediction'] = scale_prediction
         
-    def timeline_analysis(self, yarn_cluster_workers_number):
+    def timeline_analysis(self, yarn_cluster_workers_number, actual_workers):
         job_progress_percentile_timestamp_array = self._job_progress_percentile_timestamp()
-        for i in xrange(0, yarn_cluster_workers_number):
+        for i in xrange(0, actual_workers):
             self.successful_attempt_topology.append([])
         sorted_timeline = sorted(self.successful_attempt_timeline, key=operator.itemgetter('startTime'))
         for timeline in sorted_timeline:
@@ -977,9 +987,9 @@ class Hadoop2JobAnalysis(object):
 
 if __name__ == '__main__':
     from hadoop2_job_stats import Hadoop2JobStats
-    jhist1 = json.load(file("D:\Work\lenovo\job_1496242028814_0036-trace.json"))
+    jhist1 = json.load(file("D:\job_1496242028814_0038-trace.json"))
     j1 = Hadoop2JobStats(jhist1)
-    a1 = Hadoop2JobAnalysis(j1.to_dict(), 6, 4*1024, 4)
+    a1 = Hadoop2JobAnalysis(j1.to_dict(), 6, 6, 4*1024, 4)
 #     print "===============Hadoop cluster: 10 workers(8G/8U)================"
     pprint.pprint(a1.to_dict())
 #     pprint.pprint(a1.get_successful_attempt_timeline())

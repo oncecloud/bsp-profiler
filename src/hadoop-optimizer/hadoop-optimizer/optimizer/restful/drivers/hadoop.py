@@ -175,7 +175,8 @@ class Analysis(Resource):
             jobID = dict_data.get('jobID')
             workDir = dict_data.get('workDir')
             compute_node_max_cpu_core = dict_data.get('computeNodeMaxCpuCore')
-            compute_node_max_memory_gb = dict_data.get('computeNodeMaxMemoryGb') 
+            compute_node_max_memory_gb = dict_data.get('computeNodeMaxMemoryGb')
+            compute_node_num = dict_data.get('computeNodeNum') 
             scriptName = dict_data.get('scriptName', self.scriptName)
             sshKeyPath = dict_data.get('sshKeyPath')
             masterIP = shell.call(get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name)).strip()
@@ -200,7 +201,8 @@ class Analysis(Resource):
             yarn_container_cpu = int(re.sub(r'\D', '', get_yarn_container_cpu)) if get_yarn_container_cpu else 1
             yarn_container_memory_mb = int(re.sub(r'\D', '', get_yarn_container_memory_mb)) if get_yarn_container_memory_mb else 1024
             yarn_cluster_workers_number = self._get_workers_number_from_topology_json(topology_json_path)
-            output = self._analysis_jhist_json(jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core)
+            actual_workers = shell.call("ssh -i %s centos@%s \"grep %s /etc/hosts | wc -l\"" % (sshKeyPath, masterIP, cluster_name)).strip() 
+            output = self._analysis_jhist_json(jhist_json_path, yarn_cluster_workers_number, actual_workers, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core, compute_node_num)
             return output_json(output, 200)
         except Exception:
             log.exception(traceback.format_exc())
