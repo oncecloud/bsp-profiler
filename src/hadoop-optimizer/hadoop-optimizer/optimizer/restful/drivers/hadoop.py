@@ -143,10 +143,10 @@ class Analysis(Resource):
     def __init__(self):
         self.scriptName = "analysis.py"
         
-    def _analysis_jhist_json(self, jhist_json_path, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core):
+    def _analysis_jhist_json(self, jhist_json_path, yarn_cluster_workers_number, actual_workers, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core, compute_node_num):
         jhist_dict_data = json.load(file(jhist_json_path))
         key_stats_dict = Hadoop2JobStats(jhist_dict_data).to_dict()
-        analysis_dict = Hadoop2JobAnalysis(key_stats_dict, yarn_cluster_workers_number, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core).to_dict()
+        analysis_dict = Hadoop2JobAnalysis(key_stats_dict, yarn_cluster_workers_number, actual_workers, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core, compute_node_num).to_dict()
         return analysis_dict
     
     def _get_workers_number_from_topology_json(self, topology_json_path):
