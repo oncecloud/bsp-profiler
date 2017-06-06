@@ -180,7 +180,7 @@ class Analysis(Resource):
             scriptName = dict_data.get('scriptName', self.scriptName)
             sshKeyPath = dict_data.get('sshKeyPath')
             masterIP = shell.call(get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name)).strip()
-            if not workDir or not sshKeyPath or not masterIP or not jobID or not compute_node_max_cpu_core or not compute_node_max_memory_gb:
+            if not workDir or not sshKeyPath or not masterIP or not jobID or not compute_node_max_cpu_core or not compute_node_max_memory_gb or not compute_node_num:
                 abort(400, message="bad parameter in request body")
             jhist_json_path = "%s/%s-trace.json" % (work_path, jobID)
             topology_json_path = "%s/%s-topology.json" % (work_path, jobID)
@@ -201,7 +201,7 @@ class Analysis(Resource):
             yarn_container_cpu = int(re.sub(r'\D', '', get_yarn_container_cpu)) if get_yarn_container_cpu else 1
             yarn_container_memory_mb = int(re.sub(r'\D', '', get_yarn_container_memory_mb)) if get_yarn_container_memory_mb else 1024
             yarn_cluster_workers_number = self._get_workers_number_from_topology_json(topology_json_path)
-            actual_workers = shell.call("ssh -i %s centos@%s \"grep %s /etc/hosts | wc -l\"" % (sshKeyPath, masterIP, cluster_name)).strip() 
+            actual_workers = int(shell.call("ssh -i %s centos@%s \"grep %s /etc/hosts | wc -l\"" % (sshKeyPath, masterIP, cluster_name)).strip()) - 1 
             output = self._analysis_jhist_json(jhist_json_path, yarn_cluster_workers_number, actual_workers, yarn_max_memory_mb, yarn_max_cpu, yarn_container_memory_mb, yarn_container_cpu, compute_node_max_memory_gb, compute_node_max_cpu_core, compute_node_num)
             return output_json(output, 200)
         except Exception:

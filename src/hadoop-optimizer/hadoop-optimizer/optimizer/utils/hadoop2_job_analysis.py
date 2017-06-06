@@ -360,7 +360,7 @@ class Hadoop2JobAnalysis(object):
             if tmp_value > actual_max_parallelism_in_one_worker:
                 actual_max_parallelism_in_one_worker = tmp_value
         container_configure_recommended = [1024,1]
-        container_configure_memory_mb_and_cpu_count_predefine_list = [[512,1], [1024,1], [1536,2], [2048,2]]
+        container_configure_memory_mb_and_cpu_count_predefine_list = [[512,1], [1024,1], [1536,1], [2048,2]]
         for container_configure_predefine in container_configure_memory_mb_and_cpu_count_predefine_list:
             if cmp(round(float(self.job_resource_usage_metrics.get('mapAveragePhysicalMemoryUsageMb'))), container_configure_predefine[0]) <= 0 and \
             cmp(round(float(self.job_resource_usage_metrics.get('reduceAveragePhysicalMemoryUsageMb'))), container_configure_predefine[0]) <= 0:
@@ -462,7 +462,7 @@ class Hadoop2JobAnalysis(object):
                     scale_up_for_decrease_N_loop = {"workers" : yarn_cluster_workers_number,
                                                     "containerCpuCore" : container_configure_recommended[1],
                                                     "containerMemoryMb" : container_configure_recommended[0],
-                                                    "yarnCpuCore" : container_configure_recommended[1] * scale_up_container_per_worker, 
+                                                    "yarnCpuCore" : int(round(container_configure_recommended[1] * scale_up_container_per_worker * float(container_configure_recommended[0]) / 1024 / float(container_configure_recommended[1]))), 
                                                     "yarnMemoryMb" : container_configure_recommended[0] * scale_up_container_per_worker,
                                                     "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_up_container_per_worker - max_container_per_worker) * yarn_cluster_workers_number) / (float(total_time_opt) / 1000) ),
                                                     }
@@ -502,7 +502,7 @@ class Hadoop2JobAnalysis(object):
         
     def timeline_analysis(self, yarn_cluster_workers_number, actual_workers):
         job_progress_percentile_timestamp_array = self._job_progress_percentile_timestamp()
-        for i in xrange(0, actual_workers):
+        for i in xrange(0, int(actual_workers)):
             self.successful_attempt_topology.append([])
         sorted_timeline = sorted(self.successful_attempt_timeline, key=operator.itemgetter('startTime'))
         for timeline in sorted_timeline:
