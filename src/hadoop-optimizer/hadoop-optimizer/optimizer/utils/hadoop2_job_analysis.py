@@ -370,7 +370,7 @@ class Hadoop2JobAnalysis(object):
 #         max_container_per_worker = min(yarn_max_memory_gb / yarn_container_memory_gb, yarn_max_cpu / yarn_container_cpu)
 #         max_container_per_worker = int(round(yarn_max_memory_gb * 1024 / container_configure_recommended[0]))
 #         total_container_all_workers = int(max_container_per_worker * yarn_cluster_workers_number)
-        max_container_per_worker = actual_max_parallelism_in_one_worker
+        max_container_per_worker = int(round(yarn_max_memory_gb * 1024 / container_configure_recommended[0]))
         total_container_all_workers = int(actual_max_parallelism_in_one_worker) * yarn_cluster_workers_number
         map_modulo_result = self.total_maps % total_container_all_workers
         map_division_result = self.total_maps / total_container_all_workers
@@ -406,18 +406,20 @@ class Hadoop2JobAnalysis(object):
                 decrease_loops_of_map = decrease_N_loops if cmp(map_loops-1, decrease_N_loops) >= 0 else map_loops-1
                 decrease_loops_of_reduce = decrease_N_loops if cmp(reduce_loops-1, decrease_N_loops) >=0 else reduce_loops-1
                 loops_after_opt = max(map_loops - decrease_loops_of_map, reduce_loops - decrease_loops_of_reduce)
+                if loops_after_opt >= 6 and max_container_per_worker <= 12:
+                    continue
                 if loops_after_opt > 1:
                     next_loops_after_opt = loops_after_opt - 1
                 if map_loops > reduce_loops:
-                    containers_demands_for_current_loops = self.total_maps / loops_after_opt + 1 \
-                    if self.total_maps % loops_after_opt == 0 else self.total_maps / loops_after_opt
-                    containers_demands_for_next_loops = self.total_maps / next_loops_after_opt + 1 \
-                    if self.total_maps % next_loops_after_opt == 0 else self.total_maps / next_loops_after_opt
+                    containers_demands_for_current_loops = self.total_maps / loops_after_opt \
+                    if self.total_maps % loops_after_opt == 0 else self.total_maps / loops_after_opt + 1
+                    containers_demands_for_next_loops = self.total_maps / next_loops_after_opt \
+                    if self.total_maps % next_loops_after_opt == 0 else self.total_maps / next_loops_after_opt + 1
                 else:
-                    containers_demands_for_current_loops = self.total_reduces / loops_after_opt + 1 \
-                    if self.total_reduces % loops_after_opt == 0 else self.total_reduces / loops_after_opt
-                    containers_demands_for_next_loops = self.total_reduces / next_loops_after_opt + 1 \
-                    if self.total_reduces % next_loops_after_opt == 0 else self.total_reduces / next_loops_after_opt
+                    containers_demands_for_current_loops = self.total_reduces / loops_after_opt \
+                    if self.total_reduces % loops_after_opt == 0 else self.total_reduces / loops_after_opt + 1
+                    containers_demands_for_next_loops = self.total_reduces / next_loops_after_opt \
+                    if self.total_reduces % next_loops_after_opt == 0 else self.total_reduces / next_loops_after_opt + 1
                 map_average_runtime = float(self.job_resource_usage_metrics.get('mapAttemptAverageRuntime'))
                 map_CDF_medium = float(self.successful_map_attempt_CDFs[0].get('rankings')[9].get('datum'))
                 if cmp(map_average_runtime, map_CDF_medium) >= 0:
@@ -440,6 +442,8 @@ class Hadoop2JobAnalysis(object):
                 total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
                 scale_out_workers = containers_demands_for_current_loops / max_container_per_worker \
                 if containers_demands_for_current_loops % max_container_per_worker == 0 else containers_demands_for_current_loops / max_container_per_worker + 1
+                scale_out_container_per_worker = containers_demands_for_current_loops / scale_out_workers \
+                if containers_demands_for_current_loops % scale_out_workers == 0 else containers_demands_for_current_loops / scale_out_workers + 1
                 scale_out_workers_next = containers_demands_for_next_loops / max_container_per_worker \
                 if containers_demands_for_next_loops % max_container_per_worker == 0 else containers_demands_for_next_loops / max_container_per_worker + 1
                 scale_out_for_decrease_N_loop = {}
@@ -447,8 +451,8 @@ class Hadoop2JobAnalysis(object):
                     scale_out_for_decrease_N_loop = {"workers" : scale_out_workers,
                                                      "containerCpuCore" : container_configure_recommended[1],
                                                      "containerMemoryMb" : container_configure_recommended[0],
-                                                     "yarnCpuCore" : yarn_max_cpu,
-                                                     "yarnMemoryMb" : yarn_max_memory_gb * 1024,
+                                                     "yarnCpuCore" : int(round(container_configure_recommended[1] * scale_out_container_per_worker * float(container_configure_recommended[0]) / 1024 / float(container_configure_recommended[1]))),
+                                                     "yarnMemoryMb" : container_configure_recommended[0] * scale_out_container_per_worker,
                                                      "timeOptOneSecPerResourceUnit" : '%.4f' % (float((scale_out_workers - yarn_cluster_workers_number) * max_container_per_worker) / (float(total_time_opt) / 1000)),
                                                      }
                 else:
@@ -1028,7 +1032,7 @@ if __name__ == '__main__':
     from hadoop2_job_stats import Hadoop2JobStats
     jhist1 = json.load(file("D:\job_1496242028814_0036-trace.json"))
     j1 = Hadoop2JobStats(jhist1)
-    a1 = Hadoop2JobAnalysis(j1.to_dict(), 6, 6, 4*1024, 4, 512, 1)
+    a1 = Hadoop2JobAnalysis(j1.to_dict(), 6, 6, 4*1024, 4, 1024, 1, compute_node_num=10)
 #     print "===============Hadoop cluster: 10 workers(8G/8U)================"
     pprint.pprint(a1.to_dict())
 #     pprint.pprint(a1.get_successful_attempt_timeline())
