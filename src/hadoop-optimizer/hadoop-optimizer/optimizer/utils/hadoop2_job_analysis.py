@@ -10,7 +10,7 @@ import re
 import operator
 from pip._vendor import progress
 
-MAXIMIUM_CONTAINER_IN_WORKER = 12
+MAXIMIUM_CONTAINER_IN_WORKER = 20
 
 class Hadoop2JobAnalysis(object):
     
@@ -237,6 +237,8 @@ class Hadoop2JobAnalysis(object):
             
     def reduce_task_analysis(self):
         if self.total_reduces == 0:
+            self.job_resource_usage_metrics['shuffleAverageRuntime'] = 0
+            self.job_resource_usage_metrics['sortAverageRuntime'] = 0
             self.job_resource_usage_metrics['reduceAttemptAverageRuntime'] = 0
             self.job_resource_usage_metrics['reduceAverageCpuUsage'] = 0
             self.job_resource_usage_metrics['reduceAveragePhysicalMemoryUsageMb'] = 0
@@ -255,6 +257,8 @@ class Hadoop2JobAnalysis(object):
         reduce_cpu_time_usage_total = 0
         reduce_elapsed_total = 0
         reduce_attempt_run_time_total = 0
+        shuffle_run_time_total = 0
+        sort_run_time_total = 0
         reduce_attempt_count = 0
         reduce_attempt_input_bytes_total = 0
         reduce_attempt_output_bytes_total = 0
@@ -297,6 +301,8 @@ class Hadoop2JobAnalysis(object):
                     reduce_attempt_records = {}
                     reduce_attempt_records['spilledRecords'] = reduce_attempt.get('spilledRecords')
                     run_time = reduce_attempt.get('finishTime') - reduce_attempt.get('startTime')
+                    shuffle_time = reduce_attempt.get('shuffleFinished') - reduce_attempt.get('startTime')
+                    sort_time = reduce_attempt.get('sortFinished') - reduce_attempt.get('shuffleFinished')
                     reduce_attempt_run_time_total += run_time
                     reduce_attempt_result = reduce_attempt.get('result')
                     reduce_attempt_records['runTime'] = run_time
@@ -305,6 +311,8 @@ class Hadoop2JobAnalysis(object):
                         self.failed_reduce_attempt_count += 1
                         self.failed_reduce_attempt_total_time += run_time
                     else:
+                        shuffle_run_time_total += shuffle_time
+                        sort_run_time_total += sort_time
                         successful_reduce_attempt_timeline_details = {}
                         successful_reduce_attempt_timeline_details['taskType'] = "reduce"
                         successful_reduce_attempt_timeline_details['startTime'] = reduce_attempt.get('startTime')
@@ -339,6 +347,8 @@ class Hadoop2JobAnalysis(object):
 #         self.job_resource_usage_metrics['reducePhysicalMemoryUsageMb'] = '%.2f' % (float(reduce_physical_memory_usage_total) / 1024 / 1024)
 #         self.job_resource_usage_metrics['reduceVirtualMemoryUsageMb'] = '%.2f' % (float(reduce_virtual_memory_usage_total) / 1024 / 1024)
         self.job_resource_usage_metrics['reduceAttemptAverageRuntime'] = '%.2f' % (float(reduce_attempt_run_time_total) / reduce_attempt_count)
+        self.job_resource_usage_metrics['shuffleAverageRuntime'] = '%.2f' % (float(shuffle_run_time_total) / reduce_attempt_count)
+        self.job_resource_usage_metrics['sortAverageRuntime'] = '%.2f' % (float(sort_run_time_total) / reduce_attempt_count)
         self.job_resource_usage_metrics['reduceAverageCpuUsage'] = '%.6f' % (float(reduce_cpu_time_usage_total) / reduce_attempt_run_time_total)
         self.job_resource_usage_metrics['reduceAveragePhysicalMemoryUsageMb'] = '%.6f' % (float(reduce_physical_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
         self.job_resource_usage_metrics['reduceAverageVirtualMemoryUsageMb'] = '%.6f' % (float(reduce_virtual_memory_usage_total) / 1024 / 1024 / reduce_attempt_count)
@@ -420,12 +430,38 @@ class Hadoop2JobAnalysis(object):
                     if self.total_reduces % loops_after_opt == 0 else self.total_reduces / loops_after_opt + 1
                     containers_demands_for_next_loops = self.total_reduces / next_loops_after_opt \
                     if self.total_reduces % next_loops_after_opt == 0 else self.total_reduces / next_loops_after_opt + 1
+                scale_out_workers = containers_demands_for_current_loops / max_container_per_worker \
+                if containers_demands_for_current_loops % max_container_per_worker == 0 else containers_demands_for_current_loops / max_container_per_worker + 1
+                scale_out_container_per_worker = containers_demands_for_current_loops / scale_out_workers \
+                if containers_demands_for_current_loops % scale_out_workers == 0 else containers_demands_for_current_loops / scale_out_workers + 1
+                scale_out_workers_next = containers_demands_for_next_loops / max_container_per_worker \
+                if containers_demands_for_next_loops % max_container_per_worker == 0 else containers_demands_for_next_loops / max_container_per_worker + 1
+                scale_up_container_per_worker = containers_demands_for_current_loops / yarn_cluster_workers_number \
+                if containers_demands_for_current_loops % yarn_cluster_workers_number == 0 else containers_demands_for_current_loops / yarn_cluster_workers_number + 1
+                scale_up_container_per_worker_next = containers_demands_for_next_loops / yarn_cluster_workers_number \
+                if containers_demands_for_next_loops % yarn_cluster_workers_number == 0 else containers_demands_for_next_loops / yarn_cluster_workers_number + 1
+                map_stage_data_inpact_factor = 1.0
+                if map_type == 'data_intensive':
+                    if scale_up_container_per_worker > 12:
+                        map_stage_data_inpact_factor = 1.2 + (float(scale_up_container_per_worker - 12) / 10)
+                    else:
+                        map_stage_data_inpact_factor = 1.2
+                else:
+                    map_stage_data_inpact_factor = 1.0
                 map_average_runtime = float(self.job_resource_usage_metrics.get('mapAttemptAverageRuntime'))
                 map_CDF_medium = float(self.successful_map_attempt_CDFs[0].get('rankings')[9].get('datum'))
                 if cmp(map_average_runtime, map_CDF_medium) >= 0:
                     fix_of_map_average_runtime = map_CDF_medium
                 else:
                     fix_of_map_average_runtime = map_average_runtime
+                reduce_stage_data_inpact_factor = 1.0
+                if reduce_type == 'data_intensive':
+                    if scale_up_container_per_worker > 12:
+                        reduce_stage_data_inpact_factor = 1.2 + (float(scale_up_container_per_worker - 12) / 10)
+                    else:
+                        reduce_stage_data_inpact_factor = 1.2
+                else:
+                    reduce_stage_data_inpact_factor = 1.0
                 reduce_average_runtime = float(self.job_resource_usage_metrics.get('reduceAttemptAverageRuntime'))
                 if no_reduce_tasks:
                     fix_of_reduce_average_runtime = reduce_average_runtime
@@ -435,17 +471,20 @@ class Hadoop2JobAnalysis(object):
                         fix_of_reduce_average_runtime = reduce_CDF_medium
                     else:
                         fix_of_reduce_average_runtime = reduce_average_runtime
-                time_opt_of_decrease_loops_of_map = fix_of_map_average_runtime * decrease_loops_of_map / container_recommended_configure_to_current_configure_memory_ratio - (map_loops - decrease_loops_of_map)  * decrease_loops_of_map
-                time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce / container_recommended_configure_to_current_configure_memory_ratio
+                if map_stage_data_inpact_factor != 1.0:
+                    time_opt_of_decrease_loops_of_map = fix_of_map_average_runtime * decrease_loops_of_map - fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1) * (map_loops - decrease_loops_of_map)
+#                     print fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1)
+#                     print (map_loops - decrease_loops_of_map)
+#                     print fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1) * (map_loops - decrease_loops_of_map)
+                else:
+                    time_opt_of_decrease_loops_of_map = fix_of_map_average_runtime * decrease_loops_of_map 
                 if no_reduce_tasks:
                     time_opt_of_decrease_loops_of_reduce = 0
+                elif reduce_stage_data_inpact_factor != 1.0:
+                    time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce - fix_of_reduce_average_runtime * (reduce_stage_data_inpact_factor - 1) * (reduce_loops - decrease_loops_of_reduce)
+                else:
+                    time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce 
                 total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
-                scale_out_workers = containers_demands_for_current_loops / max_container_per_worker \
-                if containers_demands_for_current_loops % max_container_per_worker == 0 else containers_demands_for_current_loops / max_container_per_worker + 1
-                scale_out_container_per_worker = containers_demands_for_current_loops / scale_out_workers \
-                if containers_demands_for_current_loops % scale_out_workers == 0 else containers_demands_for_current_loops / scale_out_workers + 1
-                scale_out_workers_next = containers_demands_for_next_loops / max_container_per_worker \
-                if containers_demands_for_next_loops % max_container_per_worker == 0 else containers_demands_for_next_loops / max_container_per_worker + 1
                 scale_out_for_decrease_N_loop = {}
                 if cmp(scale_out_workers, compute_node_num) <= 0 and scale_out_workers != scale_out_workers_next:
                     scale_out_for_decrease_N_loop = {"workers" : scale_out_workers,
@@ -457,10 +496,6 @@ class Hadoop2JobAnalysis(object):
                                                      }
                 else:
                     no_scale_out = True
-                scale_up_container_per_worker = containers_demands_for_current_loops / yarn_cluster_workers_number \
-                if containers_demands_for_current_loops % yarn_cluster_workers_number == 0 else containers_demands_for_current_loops / yarn_cluster_workers_number + 1
-                scale_up_container_per_worker_next = containers_demands_for_next_loops / yarn_cluster_workers_number \
-                if containers_demands_for_next_loops % yarn_cluster_workers_number == 0 else containers_demands_for_next_loops / yarn_cluster_workers_number + 1
                 scale_up_for_decrease_N_loop = {}
                 if cmp(scale_up_container_per_worker, maximium_container_in_a_worker) <= 0 and scale_up_container_per_worker != scale_up_container_per_worker_next:
                     scale_up_for_decrease_N_loop = {"workers" : yarn_cluster_workers_number,
@@ -481,7 +516,7 @@ class Hadoop2JobAnalysis(object):
                                                 "timeOptimizationOfDecreaseLoopsOfMap" : time_opt_of_decrease_loops_of_map,
                                                 "timeOptimizationOfDecreaseLoopsOfReduce" : time_opt_of_decrease_loops_of_reduce,
                                                 "timeOptimizationTotal" : total_time_opt,
-                                                "jobElapsedAfterOpt" : (self.job_elapsed - total_time_opt) * container_recommended_configure_to_current_configure_memory_ratio,
+                                                "jobElapsedAfterOpt" : self.job_elapsed - total_time_opt,
                                                 "scaleUpForDecreaseLoops" : scale_up_for_decrease_N_loop,
                                                 "scaleOutForDecreaseLoops" : scale_out_for_decrease_N_loop}
                 scale_prediction.append(details_for_decrease_N_loops)
@@ -1030,7 +1065,7 @@ class Hadoop2JobAnalysis(object):
 
 if __name__ == '__main__':
     from hadoop2_job_stats import Hadoop2JobStats
-    jhist1 = json.load(file("D:\job_1496242028814_0036-trace.json"))
+    jhist1 = json.load(file("D:\job_1496242028814_0006-trace.json"))
     j1 = Hadoop2JobStats(jhist1)
     a1 = Hadoop2JobAnalysis(j1.to_dict(), 6, 6, 4*1024, 4, 1024, 1, compute_node_num=10)
 #     print "===============Hadoop cluster: 10 workers(8G/8U)================"

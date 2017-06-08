@@ -118,7 +118,7 @@ class Hadoop2JobStats(object):
     def _reduce_tasks_stats_filter(self, jhist_reduce_tasks_stats):
         reduce_tasks_key_stats = []
         key_stats = ["inputBytes", "outputBytes", "startTime", "finishTime", "taskStatus", "taskID"]
-        key_stats_in_attempts = ["attemptID", "startTime", "finishTime", "hostName", "resourceUsageMetrics", "result"]
+        key_stats_in_attempts = ["attemptID", "startTime", "finishTime", "hostName", "resourceUsageMetrics", "result", "shuffleFinished", "sortFinished"]
         if jhist_reduce_tasks_stats:
             for reduce in jhist_reduce_tasks_stats:
                 reduce_stats_dict = {}
