@@ -457,22 +457,25 @@ class Hadoop2JobAnalysis(object):
                 reduce_stage_data_inpact_factor = 1.0
                 if reduce_type == 'data_intensive':
                     if scale_up_container_per_worker > 12:
-                        reduce_stage_data_inpact_factor = 1.2 + (float(scale_up_container_per_worker - 12) / 10)
+                        reduce_stage_data_inpact_factor = 0.95 + (float(scale_up_container_per_worker - 12) / 10)
                     else:
-                        reduce_stage_data_inpact_factor = 1.2
+                        reduce_stage_data_inpact_factor = 0.95
                 else:
                     reduce_stage_data_inpact_factor = 1.0
                 reduce_average_runtime = float(self.job_resource_usage_metrics.get('reduceAttemptAverageRuntime'))
                 if no_reduce_tasks:
                     fix_of_reduce_average_runtime = reduce_average_runtime
                 else:
-                    reduce_CDF_medium = float(self.successful_reduce_attempt_CDFs.get('rankings')[9].get('datum'))
-                    if cmp(reduce_average_runtime, reduce_CDF_medium) >= 0:
-                        fix_of_reduce_average_runtime = reduce_CDF_medium
-                    else:
-                        fix_of_reduce_average_runtime = reduce_average_runtime
+#                     reduce_CDF_medium = float(self.successful_reduce_attempt_CDFs.get('rankings')[9].get('datum'))
+#                     if cmp(reduce_average_runtime, reduce_CDF_medium) >= 0:
+#                         fix_of_reduce_average_runtime = reduce_CDF_medium
+#                     else:
+                    fix_of_reduce_average_runtime = reduce_average_runtime
                 if map_stage_data_inpact_factor != 1.0:
+                    time_estimate_of_map_average_runtime = fix_of_map_average_runtime * map_stage_data_inpact_factor
                     time_opt_of_decrease_loops_of_map = fix_of_map_average_runtime * decrease_loops_of_map - fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1) * (map_loops - decrease_loops_of_map)
+#                     print  fix_of_map_average_runtime * map_stage_data_inpact_factor
+#                     print fix_of_map_average_runtime
 #                     print fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1)
 #                     print (map_loops - decrease_loops_of_map)
 #                     print fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1) * (map_loops - decrease_loops_of_map)
@@ -481,10 +484,16 @@ class Hadoop2JobAnalysis(object):
                 if no_reduce_tasks:
                     time_opt_of_decrease_loops_of_reduce = 0
                 elif reduce_stage_data_inpact_factor != 1.0:
+                    time_estimate_of_reduce_average_runtime = fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                     time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce - fix_of_reduce_average_runtime * (reduce_stage_data_inpact_factor - 1) * (reduce_loops - decrease_loops_of_reduce)
+#                     print fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                 else:
-                    time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce 
-                total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
+                    time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce
+                scheduler_factor = 1.1
+                time_estimate_of_job = scheduler_factor * (time_estimate_of_map_average_runtime * (map_loops - decrease_loops_of_map) + time_estimate_of_reduce_average_runtime * (reduce_loops - decrease_loops_of_reduce))
+                print time_estimate_of_job
+                total_time_opt = self.job_run_time - time_estimate_of_job
+#                 total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
                 scale_out_for_decrease_N_loop = {}
                 if cmp(scale_out_workers, compute_node_num) <= 0 and scale_out_workers != scale_out_workers_next:
                     scale_out_for_decrease_N_loop = {"workers" : scale_out_workers,
@@ -516,7 +525,8 @@ class Hadoop2JobAnalysis(object):
                                                 "timeOptimizationOfDecreaseLoopsOfMap" : time_opt_of_decrease_loops_of_map,
                                                 "timeOptimizationOfDecreaseLoopsOfReduce" : time_opt_of_decrease_loops_of_reduce,
                                                 "timeOptimizationTotal" : total_time_opt,
-                                                "jobElapsedAfterOpt" : self.job_elapsed - total_time_opt,
+#                                                 "jobElapsedAfterOpt" : self.job_elapsed - total_time_opt,
+                                                "jobElapsedAfterOpt" : time_estimate_of_job,
                                                 "scaleUpForDecreaseLoops" : scale_up_for_decrease_N_loop,
                                                 "scaleOutForDecreaseLoops" : scale_out_for_decrease_N_loop}
                 scale_prediction.append(details_for_decrease_N_loops)
