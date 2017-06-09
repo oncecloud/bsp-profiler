@@ -462,6 +462,14 @@ class Hadoop2JobAnalysis(object):
                         reduce_stage_data_inpact_factor = 0.95
                 else:
                     reduce_stage_data_inpact_factor = 1.0
+                if map_type == 'data_intensive' or reduce_type == 'data_intensive':
+                    if scale_up_container_per_worker > 12:
+                        interfere_factor = 1.1 + (float(scale_up_container_per_worker - 12) / 10)
+                    else:
+                        interfere_factor = 1.1
+                else:
+                    interfere_factor = 1.0
+                print interfere_factor, map_stage_data_inpact_factor, reduce_stage_data_inpact_factor
                 reduce_average_runtime = float(self.job_resource_usage_metrics.get('reduceAttemptAverageRuntime'))
                 if no_reduce_tasks:
                     fix_of_reduce_average_runtime = reduce_average_runtime
@@ -489,8 +497,7 @@ class Hadoop2JobAnalysis(object):
 #                     print fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                 else:
                     time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce
-                scheduler_factor = 1.1
-                time_estimate_of_job = scheduler_factor * (time_estimate_of_map_average_runtime * (map_loops - decrease_loops_of_map) + time_estimate_of_reduce_average_runtime * (reduce_loops - decrease_loops_of_reduce))
+                time_estimate_of_job = interfere_factor * (time_estimate_of_map_average_runtime * (map_loops - decrease_loops_of_map) + time_estimate_of_reduce_average_runtime * (reduce_loops - decrease_loops_of_reduce))
                 print time_estimate_of_job
                 total_time_opt = self.job_run_time - time_estimate_of_job
 #                 total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
@@ -522,11 +529,11 @@ class Hadoop2JobAnalysis(object):
                                                 "reduceLoopsAfterOpt" : reduce_loops - decrease_loops_of_reduce,
                                                 "decreaseLoopsOfMap" : decrease_loops_of_map,
                                                 "decreaseLoopsOfReduce" : decrease_loops_of_reduce,
-                                                "timeOptimizationOfDecreaseLoopsOfMap" : time_opt_of_decrease_loops_of_map,
-                                                "timeOptimizationOfDecreaseLoopsOfReduce" : time_opt_of_decrease_loops_of_reduce,
-                                                "timeOptimizationTotal" : total_time_opt,
+                                                "timeOptimizationOfDecreaseLoopsOfMap" : '%.4f' % (float(time_opt_of_decrease_loops_of_map)),
+                                                "timeOptimizationOfDecreaseLoopsOfReduce" : '%.4f' % (float(time_opt_of_decrease_loops_of_reduce)),
+                                                "timeOptimizationTotal" : '%.4f' % (float(total_time_opt)),
 #                                                 "jobElapsedAfterOpt" : self.job_elapsed - total_time_opt,
-                                                "jobElapsedAfterOpt" : time_estimate_of_job,
+                                                "jobElapsedAfterOpt" : '%.4f' % (float(time_estimate_of_job)),
                                                 "scaleUpForDecreaseLoops" : scale_up_for_decrease_N_loop,
                                                 "scaleOutForDecreaseLoops" : scale_out_for_decrease_N_loop}
                 scale_prediction.append(details_for_decrease_N_loops)
@@ -1075,7 +1082,7 @@ class Hadoop2JobAnalysis(object):
 
 if __name__ == '__main__':
     from hadoop2_job_stats import Hadoop2JobStats
-    jhist1 = json.load(file("D:\job_1496242028814_0006-trace.json"))
+    jhist1 = json.load(file("D:\job_1496242028814_0036-trace.json"))
     j1 = Hadoop2JobStats(jhist1)
     a1 = Hadoop2JobAnalysis(j1.to_dict(), 6, 6, 4*1024, 4, 1024, 1, compute_node_num=10)
 #     print "===============Hadoop cluster: 10 workers(8G/8U)================"
