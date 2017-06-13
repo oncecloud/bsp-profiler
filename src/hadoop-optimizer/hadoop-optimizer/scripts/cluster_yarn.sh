@@ -15,12 +15,17 @@ done < cluster_yarn.conf
 
 yarn_vcpu_new_value=${yarn_vcpu_new_value/\//\\/}
 yarn_mem_new_value=${yarn_mem_new_value/\//\\/}
+yarn_container_vcpu_new_value=${yarn_container_vcpu_new_value/\//\\/}
+yarn_container_mem_new_value=${yarn_container_mem_new_value/\//\\/}
 
 extend_yarn_default_vcpu_setting="sudo su - -c \"sed -i '\\\$!N;\\\$!P;\\\$!D;s/\(\n\)/\n  <property>\n    <name>yarn.nodemanager.resource.cpu-vcores<\/name>\n    $yarn_vcpu_new_value\n  <\/property>\n  <property>\n    <name>yarn.scheduler.maximum-allocation-vcores<\/name>\n    $yarn_vcpu_new_value\n  <\/property>\n/' /opt/hadoop/etc/hadoop/yarn-site.xml\" hadoop"
+extend_yarn_default_container_vcpu_setting="sudo su - -c \"sed -i '\\\$!N;\\\$!P;\\\$!D;s/\(\n\)/\n  <property>\n    <name>yarn.scheduler.minimum-allocation-vcores<\/name>\n    $yarn_container_mem_new_value\n  <\/property>\n/' /opt/hadoop/etc/hadoop/yarn-site.xml\" hadoop"	
 
 del_loopback="sudo sed -i '/^127.0.0.1/d' /etc/hosts"
 yarn_vcpu_old_value="sudo grep -A 1 \"yarn.nodemanager.resource.cpu-vcores\" /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1"
 yarn_mem_old_value="sudo grep -A 1 \"yarn.nodemanager.resource.memory-mb\" /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1"
+yarn_container_vcpu_old_value="sudo grep -A 1 \"yarn.scheduler.minimum-allocation-vcores\" /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1"
+yarn_container_mem_old_value="sudo grep -A 1 \"yarn.scheduler.minimum-allocation-mb\" /opt/hadoop/etc/hadoop/yarn-site.xml | tail -1"
 datanode_start="sudo su - -c \"hadoop-daemon.sh start datanode\" hadoop"
 nodemanager_start="sudo su - -c  \"yarn-daemon.sh start nodemanager\" hadoop"
 historyserver_start="sudo su - -c \"mr-jobhistory-daemon.sh start historyserver\" hadoop"
@@ -92,33 +97,49 @@ reconfigure_yarn()
 {
     yarn_vcpu_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_vcpu_old_value"`
     yarn_mem_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_mem_old_value"`
+    yarn_container_vcpu_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_container_vcpu_old_value"`
+    yarn_container_mem_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_container_mem_old_value"`
     if [ -z "$yarn_vcpu_value" ];then
         echo "Add default vcpu settings in Yarn configure file."
         `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_vcpu_setting"`
+        `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_container_vcpu_setting"`
         yarn_vcpu_value=$yarn_vcpu_new_value
+        yarn_container_vcpu_value=$yarn_container_vcpu_new_value
     else
         yarn_vcpu_value=${yarn_vcpu_value/\//\\/}
+        yarn_container_vcpu_value=${yarn_container_vcpu_value/\//\\/}
     fi
     yarn_mem_value=${yarn_mem_value/\//\\/}
+    yarn_container_mem_value=${yarn_container_mem_value/\//\\/}
     edit_yarn_vcpu_config=`replace_yarn_config $yarn_vcpu_value $yarn_vcpu_new_value`
     edit_yarn_mem_config=`replace_yarn_config $yarn_mem_value $yarn_mem_new_value`
-    ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config"
+    edit_yarn_container_vcpu_config=`replace_yarn_config $yarn_container_vcpu_value $yarn_container_vcpu_new_value`
+    edit_yarn_container_mem_config=`replace_yarn_config $yarn_container_mem_value $yarn_container_mem_new_value`
+    ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config && $edit_yarn_container_vcpu_config && $edit_yarn_container_mem_config"
     
     for slave_ip in ${slave_ip_array[@]}
     do
         yarn_vcpu_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$yarn_vcpu_old_value"`
         yarn_mem_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$yarn_mem_old_value"`
+        yarn_container_vcpu_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_container_vcpu_old_value"`
+        yarn_container_mem_value=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$yarn_container_mem_old_value"`
         if [ -z "$yarn_vcpu_value" ];then
             echo "Add default vcpu settings in Yarn configure file."
             `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$extend_yarn_default_vcpu_setting"`
+            `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_container_vcpu_setting"`
             yarn_vcpu_value=$yarn_vcpu_new_value
+            yarn_container_vcpu_value=$yarn_container_vcpu_new_value
         else
             yarn_vcpu_value=${yarn_vcpu_value/\//\\/}
+            yarn_container_vcpu_value=${yarn_container_vcpu_value/\//\\/}
         fi
         yarn_mem_value=${yarn_mem_value/\//\\/}
+        yarn_container_mem_value=${yarn_container_mem_value/\//\\/}
         edit_yarn_vcpu_config=`replace_yarn_config $yarn_vcpu_value $yarn_vcpu_new_value`
         edit_yarn_mem_config=`replace_yarn_config $yarn_mem_value $yarn_mem_new_value`
-        ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config"
+        edit_yarn_container_vcpu_config=`replace_yarn_config $yarn_container_vcpu_value $yarn_container_vcpu_new_value`
+        edit_yarn_container_mem_config=`replace_yarn_config $yarn_container_mem_value $yarn_container_mem_new_value`
+        ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$edit_yarn_vcpu_config && $edit_yarn_mem_config && $edit_yarn_container_vcpu_config && $edit_yarn_container_mem_config"
     done
     restart_yarn
 }

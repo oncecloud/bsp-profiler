@@ -227,7 +227,9 @@ class Reconfigure(Resource):
             restartNodeManager = dict_data.get('restartNodeManager', False)
             vcpuNum = dict_data.get('vcpuNum')
             memMB = dict_data.get('memMB')
-            if not masterIP or not sshKeyPath or not vcpuNum or not memMB:
+            vcpuNumOfContainer = dict_data.get('vcpuNumOfContainer')
+            memMBOfContainer = dict_data.get('memMBOfContainer')
+            if not masterIP or not sshKeyPath or not vcpuNum or not memMB or not vcpuNumOfContainer or not memMBOfContainer:
                 abort(400, message="bad parameter in request body")
             else:
                 project_name = request.args.get('project', "admin")
@@ -238,8 +240,8 @@ class Reconfigure(Resource):
                    " namenode" if to_bool(restartNameNode) else "", \
                    " datanode" if to_bool(restartDataNode) else "", \
                    " historyserver" if to_bool(restartHistoryServer) else "")
-                script_setting_str = "master_ip=%s\nslave_ip_array=(%s)\ncluster_name=%s\nrestart_services_array=(%s)\nuser=centos\nssh_key=\\\"%s\\\"\nyarn_vcpu_new_value=\\\"<value>%s<\/value>\\\"\nyarn_mem_new_value=\\\"<value>%s<\/value>\\\"" \
-                                    % (masterIP, slaveIPArrayStr, cluster_name, restartServicesArrayStr, sshKeyPath, str(vcpuNum), str(memMB))
+                script_setting_str = "master_ip=%s\nslave_ip_array=(%s)\ncluster_name=%s\nrestart_services_array=(%s)\nuser=centos\nssh_key=\\\"%s\\\"\nyarn_vcpu_new_value=\\\"<value>%s<\/value>\\\"\nyarn_mem_new_value=\\\"<value>%s<\/value>\\\"\nyarn_container_vcpu_new_value=\\\"<value>%s<\/value>\\\"\nyarn_container_mem_new_value=\\\"<value>%s<\/value>\\\"" \
+                                    % (masterIP, slaveIPArrayStr, cluster_name, restartServicesArrayStr, sshKeyPath, str(vcpuNum), str(memMB), str(vcpuNumOfContainer), str(memMBOfContainer))
                 work_path = "/home/optimizer/%s" % cluster_name
                 if not os.path.exists(work_path):
                     os.makedirs(work_path)

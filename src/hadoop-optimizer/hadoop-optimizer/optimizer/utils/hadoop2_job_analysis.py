@@ -389,18 +389,20 @@ class Hadoop2JobAnalysis(object):
         map_loops = map_division_result if map_modulo_result == 0 else map_division_result + 1 
         reduce_loops = reduce_division_result if reduce_modulo_result == 0 else reduce_division_result + 1
         bigger_loops = max(map_loops, reduce_loops)
-        map_input_data_estimate = len(str(self.job_resource_usage_metrics['mapInputMbTotal']))
-        map_output_data_estimate = len(str(self.job_resource_usage_metrics['mapOutputMbTotal']))
-        reduce_input_data_estimate = len(str(self.job_resource_usage_metrics['reduceInputMbTotal']))
-        reduce_output_data_estimate = len(str(self.job_resource_usage_metrics['reduceOutputMbTotal']))
+        map_input_data_estimate = len(str(round(float(self.job_resource_usage_metrics['mapInputMbTotal']))))
+        map_output_data_estimate = len(str(round(float(self.job_resource_usage_metrics['mapOutputMbTotal']))))
+        reduce_input_data_estimate = len(str(round(float(self.job_resource_usage_metrics['reduceInputMbTotal']))))
+        reduce_output_data_estimate = len(str(round(float(self.job_resource_usage_metrics['reduceOutputMbTotal']))))
         if map_input_data_estimate >= 4:
             map_type = "data_intensive"
         else:
             map_type = "normal"
+        print map_type
         if reduce_input_data_estimate >=4:
             reduce_type = "data_intensive"
         else:
             reduce_type = "normal"
+        print reduce_type
         if self.total_reduces == 0:
             no_reduce_tasks = True
         else:
@@ -462,7 +464,7 @@ class Hadoop2JobAnalysis(object):
                         reduce_stage_data_inpact_factor = 0.95
                 else:
                     reduce_stage_data_inpact_factor = 1.0
-                if map_type == 'data_intensive' or reduce_type == 'data_intensive':
+                if map_type == 'data_intensive' and reduce_type == 'data_intensive':
                     if scale_up_container_per_worker > 12:
                         interfere_factor = 1.1 + (float(scale_up_container_per_worker - 12) / 10)
                     else:
@@ -480,7 +482,6 @@ class Hadoop2JobAnalysis(object):
 #                     else:
                     fix_of_reduce_average_runtime = reduce_average_runtime
                 if map_stage_data_inpact_factor != 1.0:
-                    time_estimate_of_map_average_runtime = fix_of_map_average_runtime * map_stage_data_inpact_factor
                     time_opt_of_decrease_loops_of_map = fix_of_map_average_runtime * decrease_loops_of_map - fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1) * (map_loops - decrease_loops_of_map)
 #                     print  fix_of_map_average_runtime * map_stage_data_inpact_factor
 #                     print fix_of_map_average_runtime
@@ -489,14 +490,15 @@ class Hadoop2JobAnalysis(object):
 #                     print fix_of_map_average_runtime * (map_stage_data_inpact_factor - 1) * (map_loops - decrease_loops_of_map)
                 else:
                     time_opt_of_decrease_loops_of_map = fix_of_map_average_runtime * decrease_loops_of_map 
+                time_estimate_of_map_average_runtime = fix_of_map_average_runtime * map_stage_data_inpact_factor
                 if no_reduce_tasks:
                     time_opt_of_decrease_loops_of_reduce = 0
                 elif reduce_stage_data_inpact_factor != 1.0:
-                    time_estimate_of_reduce_average_runtime = fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                     time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce - fix_of_reduce_average_runtime * (reduce_stage_data_inpact_factor - 1) * (reduce_loops - decrease_loops_of_reduce)
 #                     print fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                 else:
                     time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce
+                time_estimate_of_reduce_average_runtime = fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                 time_estimate_of_job = interfere_factor * (time_estimate_of_map_average_runtime * (map_loops - decrease_loops_of_map) + time_estimate_of_reduce_average_runtime * (reduce_loops - decrease_loops_of_reduce))
                 print time_estimate_of_job
                 total_time_opt = self.job_run_time - time_estimate_of_job
