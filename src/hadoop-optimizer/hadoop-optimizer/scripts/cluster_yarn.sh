@@ -102,12 +102,16 @@ reconfigure_yarn()
     if [ -z "$yarn_vcpu_value" ];then
         echo "Add default vcpu settings in Yarn configure file."
         `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_vcpu_setting"`
-        `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_container_vcpu_setting"`
         yarn_vcpu_value=$yarn_vcpu_new_value
-        yarn_container_vcpu_value=$yarn_container_vcpu_new_value
     else
         yarn_vcpu_value=${yarn_vcpu_value/\//\\/}
-        yarn_container_vcpu_value=${yarn_container_vcpu_value/\//\\/}
+    fi
+    if [ -z "$yarn_container_vcpu_value" ];then
+    	echo "Add default container vcpu settings in Yarn configure file."
+    	`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_container_vcpu_setting"`
+    	yarn_container_vcpu_value=$yarn_container_vcpu_new_value
+    else
+    	yarn_container_vcpu_value=${yarn_container_vcpu_value/\//\\/}
     fi
     yarn_mem_value=${yarn_mem_value/\//\\/}
     yarn_container_mem_value=${yarn_container_mem_value/\//\\/}
@@ -126,11 +130,15 @@ reconfigure_yarn()
         if [ -z "$yarn_vcpu_value" ];then
             echo "Add default vcpu settings in Yarn configure file."
             `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$extend_yarn_default_vcpu_setting"`
-            `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "$extend_yarn_default_container_vcpu_setting"`
             yarn_vcpu_value=$yarn_vcpu_new_value
-            yarn_container_vcpu_value=$yarn_container_vcpu_new_value
         else
             yarn_vcpu_value=${yarn_vcpu_value/\//\\/}
+        fi
+        if [ -z "$yarn_container_vcpu_value" ];then
+            echo "Add default container vcpu settings in Yarn configure file."
+            `ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "$extend_yarn_default_container_vcpu_setting"`
+            yarn_container_vcpu_value=$yarn_container_vcpu_new_value
+        else
             yarn_container_vcpu_value=${yarn_container_vcpu_value/\//\\/}
         fi
         yarn_mem_value=${yarn_mem_value/\//\\/}
