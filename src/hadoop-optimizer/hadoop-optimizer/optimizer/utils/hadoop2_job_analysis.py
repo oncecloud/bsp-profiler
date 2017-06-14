@@ -469,6 +469,8 @@ class Hadoop2JobAnalysis(object):
                         interfere_factor = 1.1 + (float(scale_up_container_per_worker - 12) / 10)
                     else:
                         interfere_factor = 1.1
+                elif map_type == 'data_intensive' and reduce_type != 'data_intensive':
+                    interfere_factor = 1.1
                 else:
                     interfere_factor = 1.0
                 print interfere_factor, map_stage_data_inpact_factor, reduce_stage_data_inpact_factor
@@ -500,7 +502,7 @@ class Hadoop2JobAnalysis(object):
                     time_opt_of_decrease_loops_of_reduce = fix_of_reduce_average_runtime * decrease_loops_of_reduce
                 time_estimate_of_reduce_average_runtime = fix_of_reduce_average_runtime * reduce_stage_data_inpact_factor
                 time_estimate_of_job = interfere_factor * (time_estimate_of_map_average_runtime * (map_loops - decrease_loops_of_map) + time_estimate_of_reduce_average_runtime * (reduce_loops - decrease_loops_of_reduce))
-                print time_estimate_of_job
+                print time_estimate_of_map_average_runtime, time_estimate_of_reduce_average_runtime, time_estimate_of_job
                 total_time_opt = self.job_run_time - time_estimate_of_job
 #                 total_time_opt = time_opt_of_decrease_loops_of_map + time_opt_of_decrease_loops_of_reduce
                 scale_out_for_decrease_N_loop = {}
