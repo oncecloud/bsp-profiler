@@ -5,7 +5,7 @@
 # Date   : 2016/05/25
 
 KEYSTONE_USER_NAME = "admin"
-KEYSTONE_USER_PASSWORD = "admin"
+KEYSTONE_USER_PASSWORD = "123456"
 
 def get_sahara_cluster_s_masterIP_cmd(project_name, cluster_name):
     return "openstack --os-username %s \

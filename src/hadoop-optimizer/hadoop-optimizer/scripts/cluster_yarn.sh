@@ -173,6 +173,50 @@ install_ganglia()
 			exit 1
 		fi
 	fi
+	echo "-----------------------------------"
+	echo "Now working on Slaves."
+	for slave_ip in ${slave_ip_array[@]}
+    do
+    	if [ ! -n "$1" ];then
+	    	scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r $ganglia_rpms $user@$slave_ip:~`
+			if [[ $? -eq 0 ]];then
+				echo -e "Scp rpms to Slave status: \033[42;37m Success \033[0m"
+			else
+				echo -e "Scp rpms to Slave status: \033[41;37m Failed \033[0m"
+				exit 1
+			fi
+			install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo rpm -Uvh --force ~/ganglia-rpms/slave/*.rpm"`
+			if [[ $? -eq 0 ]];then
+				echo -e "Install rpms on Slave status: \033[42;37m Success \033[0m"
+			else
+				echo -e "Install rpms on Slave status: \033[41;37m Failed \033[0m"
+				exit 1
+			fi
+		fi
+		echo "Backing up configuration files."
+		test_backup_files=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo test -f /etc/ganglia/gmond.conf.bak"`
+		if [[ $? -eq 0 ]];then
+			init_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo cp /etc/ganglia/gmond.conf.bak /etc/ganglia/gmond.conf"`
+		fi
+		backup_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo cp /etc/ganglia/gmond.conf /etc/ganglia/gmond.conf.bak"`
+		echo "Changing configurations in (/etc/ganglia/gmond.conf)."
+		replace_settings_in_gmond_dot_conf1=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  name = \"unspecified\"/  name = \"$cluster_name\"/g' /etc/ganglia/gmond.conf"`
+		replace_settings_in_gmond_dot_conf2=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  mcast_join = 239.2.11.71/  #mcast_join = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
+		replace_settings_in_gmond_dot_conf3=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  bind = 239.2.11.71/  #bind = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
+		replace_settings_in_gmond_dot_conf4=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  retry_bind = true/  #retry_bind = true/g' /etc/ganglia/gmond.conf"`
+		get_master_ip_settings_in_gmond_dot_conf=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo grep -i \"  host = \" /etc/ganglia/gmond.conf"`
+		if [ -n $get_master_ip_settings_in_gmond_dot_conf ]
+		then
+			replace_settings_in_gmond_dot_conf5=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i '/udp_send_channel {/a\  host = $master_hostname' /etc/ganglia/gmond.conf"`
+		fi		
+		echo "Starting & enabling services (gmond)."
+		restart_and_enable_gmond_service=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo systemctl restart gmond.service && sudo systemctl enable gmond.service"`
+		if [[ $? -eq 0 ]];then
+			echo -e "Restart service gmond status: \033[42;37m Success \033[0m"
+		else
+			echo -e "Restart service gmond status: \033[41;37m Failed \033[0m"
+		fi
+	done
 	echo "Now working on Master."
 	echo "Changing authorization of (web, rrd, dwoo) directories."
 	ln_ganglia_web=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$master_ip "sudo ln -sf /usr/share/ganglia /var/www/html"`
@@ -227,50 +271,6 @@ install_ganglia()
 	else
 		echo -e "Restart service gmond status: \033[41;37m Failed \033[0m"
 	fi
-	echo "-----------------------------------"
-	echo "Now working on Slaves."
-	for slave_ip in ${slave_ip_array[@]}
-    do
-    	if [ ! -n "$1" ];then
-	    	scp_rpms=`scp -i $ssh_key -o StrictHostKeyChecking=no -r $ganglia_rpms $user@$slave_ip:~`
-			if [[ $? -eq 0 ]];then
-				echo -e "Scp rpms to Slave status: \033[42;37m Success \033[0m"
-			else
-				echo -e "Scp rpms to Slave status: \033[41;37m Failed \033[0m"
-				exit 1
-			fi
-			install_rpms=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo rpm -Uvh --force ~/ganglia-rpms/slave/*.rpm"`
-			if [[ $? -eq 0 ]];then
-				echo -e "Install rpms on Slave status: \033[42;37m Success \033[0m"
-			else
-				echo -e "Install rpms on Slave status: \033[41;37m Failed \033[0m"
-				exit 1
-			fi
-		fi
-		echo "Backing up configuration files."
-		test_backup_files=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo test -f /etc/ganglia/gmond.conf.bak"`
-		if [[ $? -eq 0 ]];then
-			init_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo cp /etc/ganglia/gmond.conf.bak /etc/ganglia/gmond.conf"`
-		fi
-		backup_ganglia_configure_file=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo cp /etc/ganglia/gmond.conf /etc/ganglia/gmond.conf.bak"`
-		echo "Changing configurations in (/etc/ganglia/gmond.conf)."
-		replace_settings_in_gmond_dot_conf1=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  name = \"unspecified\"/  name = \"$cluster_name\"/g' /etc/ganglia/gmond.conf"`
-		replace_settings_in_gmond_dot_conf2=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  mcast_join = 239.2.11.71/  #mcast_join = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
-		replace_settings_in_gmond_dot_conf3=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  bind = 239.2.11.71/  #bind = 239.2.11.71/g' /etc/ganglia/gmond.conf"`
-		replace_settings_in_gmond_dot_conf4=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i 's/  retry_bind = true/  #retry_bind = true/g' /etc/ganglia/gmond.conf"`
-		get_master_ip_settings_in_gmond_dot_conf=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo grep -i \"  host = \" /etc/ganglia/gmond.conf"`
-		if [ -n $get_master_ip_settings_in_gmond_dot_conf ]
-		then
-			replace_settings_in_gmond_dot_conf5=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo sed -i '/udp_send_channel {/a\  host = $master_hostname' /etc/ganglia/gmond.conf"`
-		fi		
-		echo "Starting & enabling services (gmond)."
-		restart_and_enable_gmond_service=`ssh -i $ssh_key -o StrictHostKeyChecking=no $user@$slave_ip "sudo systemctl restart gmond.service && sudo systemctl enable gmond.service"`
-		if [[ $? -eq 0 ]];then
-			echo -e "Restart service gmond status: \033[42;37m Success \033[0m"
-		else
-			echo -e "Restart service gmond status: \033[41;37m Failed \033[0m"
-		fi
-	done
 	echo "All done!"
 }
 
